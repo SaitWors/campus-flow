@@ -1,0 +1,12 @@
+export type Lang = 'ru'|'en';
+export type Theme = 'light'|'dark'|'system';
+export type Role = 'student'|'head'|'deputy'|'admin';
+export type Kind = 'lecture'|'lab'|'practice';
+export type User = {id:string;email:string;name:string;role:Role;status:'active'|'pending'|'blocked';subgroup:number};
+export type Settings = {group:string;program:string;course:number;semester_start:string;semester_end:string;anchor_monday:string;anchor_parity:'odd'|'even';timezone:string;revision:number;configured:boolean};
+export type Lesson = {id:string;rule_id:string;title:string;title_en:string;teacher:string;room:string;kind:Kind;mode:'onsite'|'remote'|'hybrid';meeting_url:string;note:string;start:string;end:string;subgroup:number;queue_enabled:boolean;status:'confirmed'|'pending'|'cancelled';date:string;original_date:string;revision:number;overridden:boolean;starts_at:string;ends_at:string;parity:'odd'|'even';demo?:boolean};
+export type Rule = Omit<Lesson,'parity'|'rule_id'|'status'|'date'|'original_date'|'overridden'|'starts_at'|'ends_at'> & {weekday:number;parity:'odd'|'even'|'all'};
+export type Entry = {id:string;user_id:string;name:string;ticket:number;task:string;status:string;joined_at:string;called_at:string|null};
+export type QueueSummary = {id:string;occurrence_id:string;state:string;revision:number;capacity:number;active_count:number;mine:boolean};
+export type QueueDetail = {id:string;occurrence_id:string;state:string;capacity:number;minutes_per_student:number;opens_before_hours:number;opens_at:string;revision:number;lesson_revision:number;blocked_reason:string;closed_reason:string;entries:Entry[];history:Entry[];my_position:number|null;my_entry:Entry|null;lesson:Lesson;server_time:string};
+export type Audit = {id:string;actor:string;action:string;target:string;at:string;data:Record<string,unknown>};

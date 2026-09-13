@@ -25,6 +25,25 @@ def student(user_id):return remote(os.getenv('AUTH_URL','http://auth:8000'),'/in
 
 def current_utc():return datetime.now(timezone.utc)
 
+def sync_queue(db,q,item):
+    """Keep places on edits; retire all active places on cancellation/expiry."""
+    reason=''
+    if item['status']=='cancelled':reason='lesson_cancelled'
+    elif not item['queue_enabled']:reason='queue_unavailable'
+    elif current_utc()>=datetime.fromisoformat(item['ends_at']):reason='lesson_ended'
+    changed=q.lesson_revision!=item['revision']
+    if reason:
+        active=db.scalars(select(Entry).where(Entry.queue_id==q.id,Entry.status.in_(ACTIVE))).all()
+        if q.state=='closed' and q.blocked_reason==reason and not active and not changed:return
+        q.state='closed';q.blocked_reason=reason
+        for e in active:
+            e.status='expired' if reason=='lesson_ended' else 'cancelled';e.ended_at=now()
+    elif changed:
+        q.state='paused';q.blocked_reason='lesson_changed'
+    else:return
+    q.lesson_revision=item['revision'];q.revision+=1;q.updated_at=now()
+    audit(db,q,{'name':'system'},'lesson_reconciled',item['id'],{'revision':item['revision'],'reason':reason})
+
 
 def reconcile():
     with DB() as db:after=db.get(Cursor,1).seq
@@ -32,21 +51,20 @@ def reconcile():
     for e in events:
         # Obtain schedule before queue lock. Cross-service cancellation is eventual,
         # commands ALSO verify current schedule synchronously (fail closed).
-        item=lesson(e['data']['occurrence_id'])
+        oid=e['data']['occurrence_id']
+        with DB() as db:exists=db.scalar(select(Queue.id).where(Queue.occurrence_id==oid))
+        item=lesson(oid) if exists else None
         with DB.begin() as db:
             cur=db.scalar(select(Cursor).where(Cursor.id==1).with_for_update())
             if cur.seq>=e['seq']:continue
-            q=db.scalar(select(Queue).where(Queue.occurrence_id==item['id']).with_for_update())
-            if q and q.lesson_revision<item['revision']:
-                if item['status']=='cancelled' or not item['queue_enabled']:
-                    q.state='closed';q.blocked_reason='lesson_cancelled' if item['status']=='cancelled' else 'queue_unavailable'
-                    for entry in db.scalars(select(Entry).where(Entry.queue_id==q.id,Entry.status.in_(ACTIVE))):
-                        entry.status='cancelled';entry.ended_at=now()
-                elif q.lesson_revision>0:
-                    q.state='paused';q.blocked_reason='lesson_changed'
-                q.lesson_revision=item['revision'];q.revision+=1
-                audit(db,q,{'name':'system'},'lesson_reconciled',item['id'],{'revision':item['revision']})
+            q=db.scalar(select(Queue).where(Queue.occurrence_id==oid).with_for_update())
+            if q and item:sync_queue(db,q,item)
             cur.seq=e['seq']
+    # Time passes without a schedule event. Release called students at class end.
+    with DB() as db:pending=[(q.id,q.occurrence_id) for q in db.scalars(select(Queue).where(Queue.state!='closed'))]
+    for qid,oid in pending:
+        item=lesson(oid)
+        with DB.begin() as db:sync_queue(db,locked(db,qid),item)
 
 async def event_worker():
     while True:
@@ -84,7 +102,8 @@ def can_join(q,item):
     if item['status']=='cancelled':return 'lesson_cancelled'
     if item['status']!='confirmed':return 'lesson_unconfirmed'
     if not item['queue_enabled']:return 'queue_unavailable'
-    if q.lesson_revision!=item['revision']:return 'lesson_changed'
+    if current_utc()>=datetime.fromisoformat(item['ends_at']):return 'lesson_ended'
+    if q.lesson_revision!=item['revision'] or q.blocked_reason=='lesson_changed':return 'lesson_changed'
     if q.state!='open':return 'queue_'+q.state
     if current_utc()<datetime.fromisoformat(item['starts_at'])-timedelta(hours=q.opens_before_hours):return 'queue_too_early'
     if current_utc()>=datetime.fromisoformat(item['ends_at']):return 'lesson_ended'
@@ -135,7 +154,9 @@ def get_queue(qid:str,request:Request):
         if not q:fail('not_found',404)
         oid=q.occurrence_id
     item=lesson(oid)
-    with DB() as db:return queue_json(db,db.get(Queue,qid),item,u)
+    with DB.begin() as db:
+        q=locked(db,qid);sync_queue(db,q,item);db.flush()
+        return queue_json(db,q,item,u)
 
 class Action(Input):
     action:Literal['open','pause','close','join','leave','next','done','skip','remove','configure']
@@ -174,7 +195,9 @@ def action(qid:str,data:Action,request:Request):
         mine=next((e for e in active if e.user_id==u['id']),None)
         target=next((e for e in active if e.id==data.entry_id),None)
         if data.action=='join':
-            if mine:return queue_json(db,q,item,u)
+            if mine:
+                db.add(Command(key=command_key,fingerprint=fingerprint))
+                return queue_json(db,q,item,u)
             reason=can_join(q,item)
             if reason:fail(reason,409)
             if item['subgroup'] and item['subgroup']!=u['subgroup']:fail('wrong_subgroup',403)
@@ -224,7 +247,9 @@ def action(qid:str,data:Action,request:Request):
             if not target:fail('entry_not_active',409)
             if data.action in ('done','skip'):
                 if item['status']=='cancelled':fail('lesson_cancelled',409)
-                if q.lesson_revision!=item['revision']:fail('lesson_changed',409)
+                if item['status']!='confirmed':fail('lesson_unconfirmed',409)
+                if current_utc()>=datetime.fromisoformat(item['ends_at']):fail('lesson_ended',409)
+                if q.lesson_revision!=item['revision'] or q.blocked_reason=='lesson_changed':fail('lesson_changed',409)
                 if target.status!='called':fail('entry_not_called',409)
             if data.action=='remove' and not data.reason:fail('reason_required',422)
             target.status={'done':'done','skip':'skipped','remove':'removed'}[data.action];target.ended_at=now()
@@ -239,3 +264,9 @@ def audits(qid:str,request:Request):
     u=identity(request);manager(u)
     with DB() as db:
         return [{'id':a.id,'actor':a.actor,'action':a.action,'target':a.target,'at':a.at.isoformat()+'Z','data':a.data} for a in db.scalars(select(Audit).where(Audit.queue_id==qid).order_by(Audit.at.desc()).limit(200))]
+
+@app.get('/api/queues/activity/log')
+def activity(request:Request):
+    u=identity(request);manager(u)
+    with DB() as db:
+        return [{'id':a.id,'actor':a.actor,'action':a.action,'target':a.target,'at':a.at.isoformat()+'Z','data':a.data} for a in db.scalars(select(Audit).order_by(Audit.at.desc()).limit(200))]

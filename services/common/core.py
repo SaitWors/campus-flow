@@ -76,7 +76,8 @@ def internal(request: Request):
 
 def remote(base, path, **kwargs):
     try:
-        with httpx.Client(timeout=httpx.Timeout(5, connect=2)) as client:
+        # These URLs address only our private service network, never the Internet.
+        with httpx.Client(timeout=httpx.Timeout(5, connect=2), trust_env=False) as client:
             response = client.request(kwargs.pop('method', 'GET'), base + path, headers={'X-Internal-Token': service_secret()}, **kwargs)
         if response.status_code >= 400:
             if response.status_code in (401, 403, 404, 409, 422):

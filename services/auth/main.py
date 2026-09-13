@@ -122,7 +122,7 @@ def bootstrap(data:Bootstrap,request:Request,response:Response):
 
 @app.post('/api/auth/register',status_code=201)
 def register(data:Register,request:Request):
-    rate(request,'register',15)
+    rate(request,'register',120)
     email=credentials(data.email,data.password)
     with DB.begin() as db:
         inv=db.scalar(select(Invitation).where(Invitation.token_hash==digest(data.invite)).with_for_update())
@@ -142,7 +142,8 @@ def register(data:Register,request:Request):
 
 @app.post('/api/auth/login')
 def login(data:Login,request:Request,response:Response):
-    rate(request,'login',30)
+    rate(request,'login',300)
+    rate(request,'login-account:'+digest(data.email.lower().strip()),20)
     with DB.begin() as db:
         u=db.scalar(select(User).where(User.email==data.email.lower().strip()))
         try:
@@ -193,7 +194,7 @@ def internal_user(user_id:str,request:Request):
 @app.get('/api/auth/users')
 def users(request:Request):
     with DB() as db:
-        manager(current(request,db))
+        manager(user_json(current(request,db)))
         return [user_json(u) for u in db.scalars(select(User).order_by(User.created_at)).all()]
 
 class UpdateUser(Input):

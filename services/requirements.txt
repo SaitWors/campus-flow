@@ -4,3 +4,4 @@ sqlalchemy==2.0.52
 psycopg[binary]==3.3.5
 httpx==0.28.1
 argon2-cffi==25.1.0
+tzdata==2025.2
