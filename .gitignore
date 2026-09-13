@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.db
+*.db-*
+*.sqlite*
+.venv/
+backups/
+.sites-runtime/
+*.tsbuildinfo
+test-results/
+*.bundle
+*.zip
