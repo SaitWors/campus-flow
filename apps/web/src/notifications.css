@@ -94,7 +94,7 @@
 .conversation-message p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin:8px 0 0}
 .conversation-compose textarea{resize:vertical}.conversation-compose>.button{margin-left:auto;display:flex}
 @media(max-width:650px){
- .sidebar nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));width:100%}.sidebar nav a{padding-left:2px;padding-right:2px}.sidebar nav a>span:not(.nav-active-mark){font-size:.6rem}
+ .sidebar nav{display:grid;grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);width:100%}.sidebar nav a{padding-left:2px;padding-right:2px}.sidebar nav a>span:not(.nav-active-mark){font-size:.6rem}
  .guest-shell>.topbar{padding:12px;gap:10px}.guest-brand{font-size:1rem;gap:7px}.guest-brand .brand-mark{width:32px;height:32px}.guest-brand .brand-mark svg{width:19px}
  .guest-shell .topbar-actions{gap:3px}.guest-shell .topbar-actions .button{padding:9px 12px;font-size:.75rem}
  .guest-shell .main-content{padding:20px 14px}.guest-notice{align-items:flex-start;flex-direction:column;gap:9px}

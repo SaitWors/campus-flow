@@ -9,7 +9,7 @@ const base='http://localhost:8080';
  try{
   const guest=await browser.newContext({baseURL:base,viewport:{width:390,height:844}});
   guest.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
-  await guest.addInitScript(()=>{localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');});
+  await guest.addInitScript(()=>{if(location.origin==='http://localhost:8080'){localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}});
   const page=await guest.newPage();page.setDefaultTimeout(20000);
   await page.goto('/');
   await page.getByRole('button',{name:'View timetable as a guest'}).click();
@@ -34,7 +34,7 @@ const base='http://localhost:8080';
   const student=await browser.newContext({baseURL:base,viewport:{width:390,height:844}});
   for(const [context,email,password] of [[admin,'admin@example.test','Integration-test-password-2026'],[student,'student0@example.test','Integration-test-password-2026new']]){
    context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
-   await context.addInitScript(()=>{localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');});
+   await context.addInitScript(()=>{if(location.origin==='http://localhost:8080'){localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}});
    assert((await context.request.post('/api/auth/login',{data:{email,password}})).ok());
   }
   const a=await admin.newPage(),s=await student.newPage();a.setDefaultTimeout(20000);s.setDefaultTimeout(20000);

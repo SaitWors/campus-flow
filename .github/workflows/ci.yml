@@ -60,9 +60,11 @@ jobs:
         env:
           NODE_PATH: /tmp/campus-browser/node_modules
         run: |
-          node scripts/check_ui.cjs
-          node scripts/check_community_ui.cjs
-          node scripts/check_notifications_ui.cjs
+          browser_status=0
+          node scripts/check_ui.cjs || browser_status=1
+          node scripts/check_community_ui.cjs || browser_status=1
+          node scripts/check_notifications_ui.cjs || browser_status=1
+          exit "$browser_status"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
