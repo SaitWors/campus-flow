@@ -78,3 +78,35 @@ jobs:
       - name: Teardown ephemeral CI data
         if: always()
         run: docker compose down --volumes
+  lightweight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Default launch does not build or start a language model
+        run: |
+          bash scripts/start.sh
+          test -z "$(docker compose --profile translation ps -q translator)"
+          docker compose exec -T notifications python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200"
+      - run: pip install httpx==0.28.1
+      - run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
+      - run: python -m scripts.verify_notifications
+      - name: Lightweight translation fallback
+        run: |
+          python - <<'PY'
+          import httpx
+          with httpx.Client(base_url='http://localhost:8080',trust_env=False) as c:
+              s=c.post('/api/auth/login',json={'email':'admin@example.test','password':'Integration-test-password-2026'}).json()
+              r=c.post('/api/schedule/title-preview',json={'title':'Технологии баз данных'},headers={'X-CSRF-Token':s['csrf']})
+              assert r.status_code==200 and r.json()['translation_enabled'] is False
+              assert r.json()['translation_pending'] is False
+          print('PASS: default stack without translator, all four APIs and explicit manual-translation fallback')
+          PY
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail 80
+      - name: Teardown disposable data
+        if: always()
+        run: docker compose down --volumes

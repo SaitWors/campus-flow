@@ -70,3 +70,5 @@
  .app-footer{padding-bottom:24px}
 }
 @media(prefers-reduced-motion:reduce){.t-badge,.t-badge-dot{animation:none!important;transition:none!important}}
+
+@media(max-width:650px){.notification-inbox .heading-icon{display:none}}

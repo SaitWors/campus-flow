@@ -13,6 +13,9 @@ const base='http://localhost:8080';
   await context.addInitScript(()=>{if(location.origin==='http://localhost:8080'){
     localStorage.setItem('cf-language','en');
     localStorage.setItem('cf-theme','dark');
+    if('Notification' in window){const original=Notification.requestPermission.bind(Notification);
+      Notification.requestPermission=(...args)=>{localStorage.setItem('ci-permission-requests',String(Number(localStorage.getItem('ci-permission-requests')||0)+1));return original(...args);};
+    }
   }});
   const page=await context.newPage();page.setDefaultTimeout(20000);
   await page.goto('/#notifications');
@@ -74,7 +77,7 @@ const base='http://localhost:8080';
   assert.match(swResponse.headers()['cache-control'],/no-cache/);
   assert(swResponse.headers()['content-security-policy']);
   // Browser permission prompt must never be requested automatically.
-  assert.equal(await page.evaluate(()=>Notification.permission),'default');
+  assert.equal(await page.evaluate(()=>Number(localStorage.getItem('ci-permission-requests')||0)),0);
   await context.grantPermissions(['notifications'],{origin:base});
   await page.evaluate(async owner=>{
    await navigator.serviceWorker.register('/sw.js');

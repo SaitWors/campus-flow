@@ -31,7 +31,8 @@ export function NotificationProvider({children}:{children:ReactNode}){
  const {user,lang,refresh}=useApp();const t=useN();
  const [data,setData]=useState(empty),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  const [offset,setOffset]=useState(0),[unreadOnly,setUnreadOnly]=useState(false),[tick,setTick]=useState(0);
- const [prompt,setPrompt]=useState(false),[dismissed,setDismissed]=useState<string[]>([]);
+ const [prompt,setPrompt]=useState(false),[dismissed,setDismissed]=useState<string[]>([]),[sessionTick,setSessionTick]=useState(0);
+ useEffect(()=>{const changed=()=>setSessionTick(v=>v+1);window.addEventListener('campus-session-changed',changed);return()=>window.removeEventListener('campus-session-changed',changed);},[]);
  const reload=useCallback(()=>setTick(v=>v+1),[]);
  useEffect(()=>{let active=true,busy=false;
    async function load(){if(busy)return;busy=true;try{
@@ -53,7 +54,7 @@ export function NotificationProvider({children}:{children:ReactNode}){
      if(active)setPrompt(!deviceMeta()&&until<Date.now());
    }).catch(()=>{});
    return()=>{active=false;};
- },[user.id]);
+ },[user.id,sessionTick]);
  const read=useCallback(async(ids?:string[])=>{
    await api('/api/notifications/read','POST',ids?{ids}:{before:data.as_of});
    setDismissed(v=>[...v,...(ids||data.items.map(n=>n.id))]);reload();
@@ -114,7 +115,7 @@ export function NotificationSettings(){
  const issue=supportIssue();
  useEffect(()=>{let active=true;void Promise.all([api<Preferences>('/api/notifications/preferences'),api<PushConfig>('/api/notifications/config'),api<Device[]>('/api/notifications/subscriptions')]).then(async([p,c,d])=>{
    if(!active)return;setPref(p);setConfig(c);setDevices(d);
-   const meta=deviceMeta();setConnected(Boolean(meta?.owner===user.id&&d.some(x=>x.id===meta.id)&&!supportIssue()&&Notification.permission==='granted'));setError('');
+   const meta=deviceMeta();setConnected(Boolean(meta?.owner===user.id&&meta.key===c.public_key&&d.some(x=>x.id===meta.id)&&!supportIssue()&&Notification.permission==='granted'));setError('');
  }).catch(e=>active&&setError(nError(lang,e)));return()=>{active=false;};},[user.id,attempt,lang]);
  async function run(job:()=>Promise<unknown>,message?:string){setBusy(true);setError('');try{await job();if(message)notify(message);}catch(e){setError(nError(lang,e));}finally{setBusy(false);}}
  async function refreshDevices(){setDevices(await api<Device[]>('/api/notifications/subscriptions'));reload();}
