@@ -12,11 +12,11 @@ from scripts.smoke import run
 def cluster(tmp_path):
     root=Path(__file__).resolve().parents[1]
     ports={}
-    for service in ('auth','schedule','queue'):
+    for service in ('auth','schedule','queue','notifications'):
         with socket.socket() as s:
             s.bind(('127.0.0.1',0));ports[service]=s.getsockname()[1]
     urls={k:'http://127.0.0.1:'+str(v) for k,v in ports.items()}
-    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'EVENT_WORKER':'true','TRANSLATION_WORKER':'false','COOKIE_SECURE':'false'}
+    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'QUEUE_URL':urls['queue'],'EVENT_WORKER':'true','TRANSLATION_WORKER':'false','COOKIE_SECURE':'false'}
     processes=[];logs=[]
     try:
         for service in ports:
@@ -42,3 +42,5 @@ def cluster(tmp_path):
 def test_real_http_workflow(cluster):
     urls,setup_key=cluster
     assert len(run(urls,setup_key))==6
+    from scripts.verify_notifications import run as notifications
+    notifications(urls)

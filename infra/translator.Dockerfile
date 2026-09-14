@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM libretranslate/libretranslate:v1.9.6
+FROM libretranslate/libretranslate:v1.9.6@sha256:1de2d7056bb8ad607a412f4563d9abe324ff632b43b5be9428bcc8e213aebb32
 ENV LT_LOAD_ONLY=en,ru \
     LT_DISABLE_WEB_UI=true \
     LT_DISABLE_FILES_TRANSLATION=true \

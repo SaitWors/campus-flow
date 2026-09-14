@@ -348,15 +348,16 @@ def inbox_items(db, user):
 
 
 @app.get('/api/notifications/inbox')
-def inbox(request: Request, offset: int = Query(default=0, ge=0, le=10000)):
+def inbox(request: Request, offset: int = Query(default=0, ge=0, le=10000), unread_only: bool = False):
     user = identity(request)
     with DB() as db:
         stamp = now()
         items = inbox_items(db, user)
         pref = preferences(db, user['id'])
         popups = [n for n in items if not n.popup_dismissed and not n.read_at and n.data.get('important')] if pref['important_popups'] else []
-        return {'items': [serialize(n) for n in items[offset:offset + 30]],
-                'unread': sum(n.read_at is None for n in items), 'total': len(items),
+        filtered = [n for n in items if not n.read_at] if unread_only else items
+        return {'items': [serialize(n) for n in filtered[offset:offset + 30]],
+                'unread': sum(n.read_at is None for n in items), 'total': len(filtered),
                 'popups': [serialize(n) for n in popups[:3]], 'as_of': stamp.isoformat() + 'Z'}
 
 

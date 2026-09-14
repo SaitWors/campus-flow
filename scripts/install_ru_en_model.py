@@ -8,8 +8,8 @@ from pathlib import Path
 import requests
 
 MODEL_URL = 'https://argos-net.com/v1/translate-ru_en-1_9.argosmodel'
-# Filled with the independently downloaded artifact hash after the first CI run.
-MODEL_SHA256 = ''
+# Downloaded from the official index URL and verified in CI run 34857579640.
+MODEL_SHA256 = 'e9ba8bf722d10a4a4c39f74289d5938fd47eac08dbe4ed0afd22d89445a5c3ac'
 MAX_BYTES = 400 * 1024 * 1024
 
 
@@ -23,7 +23,7 @@ def checksum(path):
 
 def verify(path):
     actual = checksum(path)
-    if MODEL_SHA256 and actual != MODEL_SHA256:
+    if actual != MODEL_SHA256:
         raise ValueError('model_checksum_mismatch')
     with zipfile.ZipFile(path) as archive:
         names = [n for n in archive.namelist() if n.endswith('/metadata.json') or n == 'metadata.json']
