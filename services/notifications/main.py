@@ -391,6 +391,8 @@ class Subscribe(Input):
     @model_validator(mode='after')
     def valid(self):
         validate_subscription(self.model_dump(exclude={'label'}))
+        if any(ord(ch) < 32 for ch in self.label):
+            raise ValueError('invalid_device_label')
         return self
 
 
@@ -462,6 +464,13 @@ class Publish(Input):
     audience: Literal['all', 'managers', 'subgroup1', 'subgroup2'] = 'all'
     important: bool = True
     hours: int = Field(default=24, ge=1, le=168)
+
+    @model_validator(mode='after')
+    def valid(self):
+        for value in (self.title, self.body, self.title_en, self.body_en):
+            if any(ord(ch) < 32 and ch not in '\n\r\t' for ch in value):
+                raise ValueError('invalid_announcement_text')
+        return self
 
 
 @app.post('/api/notifications/announcements', status_code=201)

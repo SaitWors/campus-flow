@@ -4,9 +4,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const base='http://localhost:8080';
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const context=await chromium.launchPersistentContext('',{headless:true,baseURL:base,viewport:{width:1360,height:900}});
  try{
-  const context=await browser.newContext({baseURL:base,viewport:{width:1360,height:900}});
   const errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   const session=await context.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}});
   assert(session.ok());const me=await session.json();
@@ -91,21 +90,32 @@ const base='http://localhost:8080';
   cdp.on('ServiceWorker.workerRegistrationUpdated',({registrations})=>{
    const r=registrations.find(r=>r.scopeURL===base+'/');if(r)registrationId=r.registrationId;
   });
+  const workerErrors=[];cdp.on('ServiceWorker.workerErrorReported',e=>workerErrors.push(e.errorMessage));
   await cdp.send('ServiceWorker.enable');
   for(let n=0;n<50&&!registrationId;n++)await new Promise(r=>setTimeout(r,100));
   assert(registrationId,'service worker registration');
+  const liveWorker=context.serviceWorkers().find(w=>w.url()===base+'/sw.js');
+  assert(liveWorker);
+  await liveWorker.evaluate(()=>{
+    self.__notificationCalls=[];
+    const original=self.registration.showNotification.bind(self.registration);
+    self.registration.showNotification=async(title,options)=>{
+      const call={title,body:options.body,accepted:false};self.__notificationCalls.push(call);
+      await original(title,options);call.accepted=true;
+    };
+  });
   await page.close();
   const payload={id:'test-push-after-close',user_id:me.user.id,title:'Background delivery',body:'App tab is closed',route:'#notifications'};
   await cdp.send('ServiceWorker.deliverPushMessage',{origin:base,registrationId,data:JSON.stringify(payload)});
-  let shown=[];
+  let shown=[],calls=[];
   for(let n=0;n<50;n++){
    const worker=context.serviceWorkers().find(w=>w.url()===base+'/sw.js');
-   if(worker)shown=await worker.evaluate(async()=> (await self.registration.getNotifications()).map(n=>({title:n.title,body:n.body})));
-   if(shown.some(n=>n.title==='Background delivery'))break;
+   if(worker){const state=await worker.evaluate(async()=>({shown:(await self.registration.getNotifications()).map(n=>({title:n.title,body:n.body})),calls:self.__notificationCalls||[]}));shown=state.shown;calls=state.calls;}
+   if(calls.some(n=>n.title==='Background delivery'&&n.accepted))break;
    await new Promise(r=>setTimeout(r,100));
   }
-  assert(shown.some(n=>n.title==='Background delivery'&&n.body==='App tab is closed'),'push while app tab is closed');
+  assert(calls.some(n=>n.title==='Background delivery'&&n.body==='App tab is closed'&&n.accepted),'push while app tab is closed: '+JSON.stringify({shown,calls,workerErrors}));
   assert.deepEqual(errors,[]);
   console.log('PASS: announcement publishing, inbox, read receipts, mobile layouts, preferences, PWA assets, no automatic permission prompt, real service worker push with app tab closed');
- }finally{await browser.close();}
+ }finally{await context.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

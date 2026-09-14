@@ -219,3 +219,10 @@ def test_standard_webpush_encryption_without_network(monkeypatch):
     assert captured['allow_redirects'] is False and captured['verify'] is True
     assert b'Private message' not in captured['data']
     assert captured['headers']['content-encoding']=='aes128gcm'
+
+
+def test_control_characters_are_rejected_before_postgresql(service):
+    _,client,_,_=service
+    assert client.post('/api/notifications/announcements',json={**PUBLISH,'body':'bad\u0000text'},headers={**AUTH,**KEY}).status_code==422
+    _,data=subscribe(client)
+    assert client.post('/api/notifications/subscriptions',json={**data,'label':'bad\u0000label'},headers=headers()).status_code==422
