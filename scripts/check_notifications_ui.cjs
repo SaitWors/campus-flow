@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const base='http://localhost:8080';
 (async()=>{
- const context=await chromium.launchPersistentContext('',{headless:true,baseURL:base,viewport:{width:1360,height:900}});
+ const context=await chromium.launchPersistentContext('',{headless:true,channel:'chromium',baseURL:base,viewport:{width:1360,height:900}});
  try{
   const errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   const session=await context.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}});
@@ -77,7 +77,10 @@ const base='http://localhost:8080';
   assert(swResponse.headers()['content-security-policy']);
   // Browser permission prompt must never be requested automatically.
   assert.equal(await page.evaluate(()=>Number(localStorage.getItem('ci-permission-requests')||0)),0);
+  // Full Chromium (new headless), not the minimal headless shell: the shell
+  // lacks the platform notification service required by a real showNotification.
   await context.grantPermissions(['notifications'],{origin:base});
+  assert.equal(await page.evaluate(()=>Notification.permission),'granted');
   await page.evaluate(async owner=>{
    await navigator.serviceWorker.register('/sw.js');
    const reg=await navigator.serviceWorker.ready;

@@ -16,9 +16,13 @@ def replace_once(path, old, new):
 
 
 def main():
-    replace_once(Path('libretranslate/init.py'),
-                 'len(package.get_installed_packages()) < 2',
-                 'len(package.get_installed_packages()) < 1')
+    # Upstream entrypoint first invokes the installed console script, then
+    # Gunicorn from /app. Patch both copies, which may be different files.
+    init_paths = {Path('libretranslate/init.py').resolve(),
+                  (Path(find_spec('libretranslate').origin).parent / 'init.py').resolve()}
+    for source in init_paths:
+        replace_once(source, 'len(package.get_installed_packages()) < 2',
+                     'len(package.get_installed_packages()) < 1')
     source = Path(find_spec('argostranslate').origin).parent / 'translate.py'
     replace_once(source, 'class PackageTranslation(ITranslation):', '''
 class TitleSentencizer:
