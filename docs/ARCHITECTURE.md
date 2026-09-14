@@ -27,7 +27,7 @@ flowchart TD
 
 The services never connect to another service's database. Each database is placed on a separate internal Docker network, accessible only by its owning API. Only the web gateway port is published. The APIs share a private service network and an internal authentication token; the gateway strips client-supplied internal tokens and denies `/internal/` routes.
 
-The three PostgreSQL containers can be consolidated into a managed PostgreSQL deployment with separate databases and roles later. Their logical ownership must remain separate.
+The four PostgreSQL containers can be consolidated into a managed PostgreSQL deployment with separate databases and roles later. Their logical ownership must remain separate.
 
 ## Time and schedule
 
@@ -71,3 +71,11 @@ SQLite is available only for local development and smoke tests. It serializes tr
 ## Local title translation
 
 Schedule owns the title_translations cache (schema v2) and its background worker. LibreTranslate v1.9.6 runs on an internal network shared solely with schedule, without published ports or runtime internet access. Models are installed during image build. Computed title_en_auto is separate from manual title_en; inference does not change lesson revisions or queue events. See [AUTO_TRANSLATION_RU.md](AUTO_TRANSLATION_RU.md).
+
+## Notifications service (PR2)
+
+notifications owns its PostgreSQL inbox, preferences, subscriptions, announcements, VAPID keys and delivery outbox. It consumes committed schedule and queue events using persistent cursors. Queue schema 2 adds directed call events; source commands serialize sequence allocation with commit order. Notifications are created with the cursor in one transaction. Delivery leases and stable device tags support restart/retry; session and audience checks happen immediately before sending.
+
+The frontend is an installable PWA with a Service Worker for Web Push and a network-only offline fallback. API data is never cached in the worker. Four database backup/restore scripts include the notification keys.
+
+See [notification API and threat boundaries](NOTIFICATIONS_RU.md) and [deployment](DEPLOY_FRIEND_RU.md). The translator is now an optional Compose profile with a pinned RU → EN package, resumable download and integrity verification.
