@@ -1,5 +1,5 @@
 export type Lang = 'ru'|'en';
-export type Theme = 'light'|'dark'|'system';
+export type Theme = 'light'|'dark'|'black'|'ultra-black'|'system';
 export type Role = 'student'|'head'|'deputy'|'admin';
 export type Kind = 'lecture'|'lab'|'practice';
 export type User = {id:string;email:string;name:string;role:Role;status:'active'|'pending'|'blocked';subgroup:number};
