@@ -15,3 +15,4 @@ backups/
 test-results/
 *.bundle
 *.zip
+.dev-data/

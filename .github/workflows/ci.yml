@@ -1,0 +1,49 @@
+name: Campus Flow verification
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: apps/web/package-lock.json}
+      - run: pip install -r services/requirements.lock
+      - run: python -m pytest -q -s
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/web
+      - run: npm test && npm run build
+        working-directory: apps/web
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: bash scripts/start.sh
+      - run: pip install httpx==0.28.1
+      - name: Real PostgreSQL and gateway workflow
+        run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
+      - name: Verify API schemas and private route boundary
+        run: |
+          curl --fail http://localhost:8080/api/auth/openapi.json -o /tmp/auth-schema.json
+          curl --fail http://localhost:8080/api/schedule/openapi.json -o /tmp/schedule-schema.json
+          curl --fail http://localhost:8080/api/queues/openapi.json -o /tmp/queue-schema.json
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/internal/events)" = 404
+      - name: Backup and restore round trip
+        run: |
+          bash scripts/backup.sh
+          restore_dirs=(backups/*/)
+          printf 'RESTORE\n' | bash scripts/restore.sh "${restore_dirs[0]}"
+          python scripts/verify_restore.py
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --tail 150
+      - name: Teardown ephemeral CI data
+        if: always()
+        run: docker compose down --volumes

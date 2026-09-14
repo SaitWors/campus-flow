@@ -1,0 +1,119 @@
+name: campus-flow
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: infra/api.Dockerfile
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 15s
+
+x-environment: &environment
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Run START_WINDOWS.cmd or bash scripts/start.sh}
+  APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  AUTH_URL: http://auth:8000
+  SCHEDULE_URL: http://schedule:8000
+  PYTHONDONTWRITEBYTECODE: '1'
+
+x-database: &database
+  image: postgres:17-alpine
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  healthcheck:
+    test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    interval: 5s
+    timeout: 5s
+    retries: 15
+    start_period: 20s
+
+services:
+  auth-db:
+    <<: *database
+    environment:
+      POSTGRES_USER: auth
+      POSTGRES_DB: auth
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:?Run setup}
+    volumes: [auth_data:/var/lib/postgresql/data]
+    networks: [auth_data_net]
+  schedule-db:
+    <<: *database
+    environment:
+      POSTGRES_USER: schedule
+      POSTGRES_DB: schedule
+      POSTGRES_PASSWORD: ${SCHEDULE_DB_PASSWORD:?Run setup}
+    volumes: [schedule_data:/var/lib/postgresql/data]
+    networks: [schedule_data_net]
+  queue-db:
+    <<: *database
+    environment:
+      POSTGRES_USER: queue
+      POSTGRES_DB: queue
+      POSTGRES_PASSWORD: ${QUEUE_DB_PASSWORD:?Run setup}
+    volumes: [queue_data:/var/lib/postgresql/data]
+    networks: [queue_data_net]
+  auth:
+    <<: *app
+    command: [uvicorn, services.auth.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@auth-db:5432/auth
+      SETUP_KEY: ${SETUP_KEY:?Run setup}
+    depends_on:
+      auth-db: {condition: service_healthy}
+    networks: [services_net, auth_data_net]
+  schedule:
+    <<: *app
+    command: [uvicorn, services.schedule.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://schedule:${SCHEDULE_DB_PASSWORD}@schedule-db:5432/schedule
+    depends_on:
+      schedule-db: {condition: service_healthy}
+      auth: {condition: service_healthy}
+    networks: [services_net, schedule_data_net]
+  queue:
+    <<: *app
+    command: [uvicorn, services.queue.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://queue:${QUEUE_DB_PASSWORD}@queue-db:5432/queue
+    depends_on:
+      queue-db: {condition: service_healthy}
+      schedule: {condition: service_healthy}
+    networks: [services_net, queue_data_net]
+  web:
+    build:
+      context: .
+      dockerfile: infra/web.Dockerfile
+    restart: unless-stopped
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:8080"]
+    depends_on:
+      auth: {condition: service_healthy}
+      schedule: {condition: service_healthy}
+      queue: {condition: service_healthy}
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [services_net]
+
+volumes:
+  auth_data:
+  schedule_data:
+  queue_data:
+networks:
+  services_net:
+  auth_data_net: {internal: true}
+  schedule_data_net: {internal: true}
+  queue_data_net: {internal: true}
