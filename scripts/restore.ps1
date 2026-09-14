@@ -1,15 +1,15 @@
 param([Parameter(Mandatory=$true)][string]$BackupPath)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-foreach ($file in @('COMPLETE','auth.dump','schedule.dump','queue.dump')) {
+foreach ($file in @('COMPLETE','auth.dump','schedule.dump','queue.dump','notifications.dump')) {
     if (-not (Test-Path (Join-Path $BackupPath $file))) { throw "Missing backup file: $file" }
 }
-Write-Host 'This replaces ALL current accounts, schedule and queues with the selected backup.'
+Write-Host 'This replaces ALL current accounts, schedule, queues and notifications with the selected backup.'
 if ((Read-Host 'Type RESTORE to continue') -cne 'RESTORE') { exit 1 }
-docker compose stop web queue schedule auth
+docker compose stop web notifications queue schedule auth
 if ($LASTEXITCODE -ne 0) { throw 'Could not stop application services. Restore cancelled.' }
-Write-Host 'Application stays stopped if restoration fails. Restore all three databases before restarting.'
-foreach ($service in @('auth','schedule','queue')) {
+Write-Host 'Application stays stopped if restoration fails. Restore all four databases before restarting.'
+foreach ($service in @('auth','schedule','queue','notifications')) {
     $dbService = $service + '-db'
     docker compose cp (Join-Path $BackupPath ($service + '.dump')) ($dbService + ':/tmp/campus-restore.dump')
     if ($LASTEXITCODE -ne 0) { throw "Copy failed: $service" }

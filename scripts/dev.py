@@ -15,7 +15,7 @@ data=root/'.dev-data'
 data.mkdir(exist_ok=True)
 env={**os.environ,'INTERNAL_TOKEN':'local-development-internal-token-32-characters',
      'SETUP_KEY':'local-development-setup-key', 'APP_ORIGIN':'http://localhost:5173,http://127.0.0.1:5173',
-     'COOKIE_SECURE':'false','AUTH_URL':'http://127.0.0.1:8101','SCHEDULE_URL':'http://127.0.0.1:8102'}
+     'COOKIE_SECURE':'false','AUTH_URL':'http://127.0.0.1:8101','SCHEDULE_URL':'http://127.0.0.1:8102','QUEUE_URL':'http://127.0.0.1:8103','TRANSLATION_WORKER':'false'}
 processes=[]
 def stop(*_):
     for p in processes:p.terminate()
@@ -23,7 +23,7 @@ def stop(*_):
 signal.signal(signal.SIGINT,stop)
 signal.signal(signal.SIGTERM,stop)
 try:
-    for service,port in [('auth',8101),('schedule',8102),('queue',8103)]:
+    for service,port in [('auth',8101),('schedule',8102),('queue',8103),('notifications',8104)]:
         processes.append(subprocess.Popen([sys.executable,'-m','uvicorn','services.'+service+'.main:app','--port',str(port),'--host','127.0.0.1'],cwd=root,env={**env,'DATABASE_URL':'sqlite:///'+str(data/(service+'.db'))}))
     print('Development setup key: local-development-setup-key',flush=True)
     while True:

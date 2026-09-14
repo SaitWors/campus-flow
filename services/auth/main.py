@@ -299,3 +299,26 @@ def audits(request:Request):
     with DB() as db:
         manager(user_json(current(request,db)))
         return [{'id':a.id,'actor':a.actor,'action':a.action,'target':a.target,'at':a.at.isoformat()+'Z','data':a.data} for a in db.scalars(select(Audit).order_by(Audit.at.desc()).limit(200))]
+
+
+@app.get('/internal/notification-recipients')
+def notification_recipients(request:Request):
+    internal(request)
+    with DB() as db:
+        # No names, emails, passwords or session tokens needed for routing.
+        return [{'id':u.id,'role':u.role,'subgroup':u.subgroup}
+                for u in db.scalars(select(User).where(User.status=='active'))]
+
+class PushCheck(Input):
+    user_id:str=Field(min_length=36,max_length=36)
+    session_hash:str=Field(pattern=r'^[0-9a-f]{64}$')
+
+@app.post('/internal/push-check')
+def push_check(data:PushCheck,request:Request):
+    internal(request)
+    with DB() as db:
+        session=db.get(Session,data.session_hash)
+        user=db.get(User,data.user_id)
+        if not session or session.user_id!=data.user_id or session.expires<=now() or not user or user.status!='active':
+            return {'active':False}
+        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup}

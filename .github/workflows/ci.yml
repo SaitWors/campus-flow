@@ -23,6 +23,9 @@ jobs:
       - run: npm test && npm run build
         working-directory: apps/web
   compose:
+    env:
+      COMPOSE_PROFILES: translation
+      TRANSLATION_WORKER: 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

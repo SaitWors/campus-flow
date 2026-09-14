@@ -59,3 +59,12 @@ class Cursor(Base):
     __tablename__='cursors'
     id:Mapped[int]=mapped_column(Integer,primary_key=True,default=1)
     seq:Mapped[int]=mapped_column(Integer,default=0)
+
+
+class Event(Base):
+    __tablename__='events'
+    seq:Mapped[int]=mapped_column(Integer,primary_key=True,autoincrement=True)
+    id:Mapped[str]=mapped_column(String(36),unique=True,default=uid)
+    type:Mapped[str]=mapped_column(String(80))
+    data:Mapped[dict]=mapped_column(JSON)
+    at:Mapped[datetime]=mapped_column(DateTime,default=now)

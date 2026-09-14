@@ -8,11 +8,15 @@ function New-CampusSecret {
 }
 if (-not (Test-Path '.env')) {
     $lines = @('APP_ORIGIN=http://localhost:8080', 'HTTP_PORT=8080', 'BIND_ADDRESS=127.0.0.1', 'COOKIE_SECURE=false')
-    foreach ($key in @('INTERNAL_TOKEN','SETUP_KEY','AUTH_DB_PASSWORD','SCHEDULE_DB_PASSWORD','QUEUE_DB_PASSWORD')) {
+    foreach ($key in @('INTERNAL_TOKEN','SETUP_KEY','AUTH_DB_PASSWORD','SCHEDULE_DB_PASSWORD','QUEUE_DB_PASSWORD','NOTIFICATIONS_DB_PASSWORD')) {
         $lines += $key + '=' + (New-CampusSecret)
     }
     [IO.File]::WriteAllText((Join-Path (Get-Location) '.env'), ($lines -join "`n") + "`n", (New-Object Text.UTF8Encoding($false)))
     Write-Host 'Created .env with unique keys. Keep this file with your backups.'
+}
+# Preserve existing credentials while upgrading a PR1 installation.
+if (-not (Select-String -Path '.env' -Pattern '^NOTIFICATIONS_DB_PASSWORD=' -Quiet)) {
+    [IO.File]::AppendAllText((Join-Path (Get-Location) '.env'), "`nNOTIFICATIONS_DB_PASSWORD=" + (New-CampusSecret) + "`n", (New-Object Text.UTF8Encoding($false)))
 }
 docker compose version
 if ($LASTEXITCODE -ne 0) { throw 'Install/start Docker Desktop with Linux containers, then try again.' }

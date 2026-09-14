@@ -22,6 +22,7 @@ x-environment: &environment
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   AUTH_URL: http://auth:8000
   SCHEDULE_URL: http://schedule:8000
+  QUEUE_URL: http://queue:8000
   PYTHONDONTWRITEBYTECODE: '1'
 
 x-database: &database
@@ -60,6 +61,26 @@ services:
       POSTGRES_PASSWORD: ${QUEUE_DB_PASSWORD:?Run setup}
     volumes: [queue_data:/var/lib/postgresql/data]
     networks: [queue_data_net]
+  notifications-db:
+    <<: *database
+    environment:
+      POSTGRES_USER: notifications
+      POSTGRES_DB: notifications
+      POSTGRES_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?Run setup}
+    volumes: [notifications_data:/var/lib/postgresql/data]
+    networks: [notifications_data_net]
+  notifications:
+    <<: *app
+    command: [uvicorn, services.notifications.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://notifications:${NOTIFICATIONS_DB_PASSWORD}@notifications-db:5432/notifications
+      PUSH_ENABLED: ${PUSH_ENABLED:-true}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+    depends_on:
+      notifications-db: {condition: service_healthy}
+      queue: {condition: service_healthy}
+    networks: [services_net, notifications_data_net]
   auth:
     <<: *app
     command: [uvicorn, services.auth.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
@@ -75,6 +96,7 @@ services:
     command: [uvicorn, services.schedule.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
     environment:
       <<: *environment
+      TRANSLATION_WORKER: ${TRANSLATION_WORKER:-false}
       DATABASE_URL: postgresql+psycopg://schedule:${SCHEDULE_DB_PASSWORD}@schedule-db:5432/schedule
     depends_on:
       schedule-db: {condition: service_healthy}
@@ -91,6 +113,7 @@ services:
       schedule: {condition: service_healthy}
     networks: [services_net, queue_data_net]
   translator:
+    profiles: [translation]
     build:
       context: .
       dockerfile: infra/translator.Dockerfile
@@ -122,6 +145,7 @@ services:
       auth: {condition: service_healthy}
       schedule: {condition: service_healthy}
       queue: {condition: service_healthy}
+      notifications: {condition: service_healthy}
     security_opt: [no-new-privileges:true]
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
@@ -134,9 +158,11 @@ volumes:
   auth_data:
   schedule_data:
   queue_data:
+  notifications_data:
 networks:
   services_net:
   translation_net: {internal: true}
   auth_data_net: {internal: true}
   schedule_data_net: {internal: true}
   queue_data_net: {internal: true}
+  notifications_data_net: {internal: true}
