@@ -38,3 +38,6 @@
 .theme-swatch[data-preview=system]{background:linear-gradient(120deg,#f3f5fa 50%,#111826 50%)}
 .theme-swatch[data-preview=system]>span{background:linear-gradient(120deg,#fff 50%,#192233 50%)}
 @media(max-width:480px){.theme-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.translation-note{display:block;font-size:.8rem;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.schedule-board>.translation-note{padding:10px 20px}

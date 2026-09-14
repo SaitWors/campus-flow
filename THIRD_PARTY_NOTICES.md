@@ -25,3 +25,8 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+
+## Local machine translation
+
+LibreTranslate v1.9.6 runs as a separate unmodified service. License: GNU AGPL-3.0; corresponding [source](https://github.com/LibreTranslate/LibreTranslate/tree/v1.9.6) and [full license](https://github.com/LibreTranslate/LibreTranslate/blob/v1.9.6/LICENSE). Project-specific Docker configuration is included here. Language packages are installed from the official Argos Translate index during build; preserve notices distributed with those packages and the image when redistributing it. Models are not committed in this repository.

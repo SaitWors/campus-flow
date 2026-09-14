@@ -66,3 +66,8 @@ SQLite is available only for local development and smoke tests. It serializes tr
 - Authenticated iCalendar snapshot export.
 - Future notifications should use a dedicated service and delivery queue, storing delivery retries separately from lab queue transactions.
 - Multi-group support would require group membership and access scoping in every service; it is not just a new frontend filter.
+
+
+## Local title translation
+
+Schedule owns the title_translations cache (schema v2) and its background worker. LibreTranslate v1.9.6 runs on an internal network shared solely with schedule, without published ports or runtime internet access. Models are installed during image build. Computed title_en_auto is separate from manual title_en; inference does not change lesson revisions or queue events. See [AUTO_TRANSLATION_RU.md](AUTO_TRANSLATION_RU.md).

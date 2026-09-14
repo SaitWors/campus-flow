@@ -16,7 +16,7 @@ def cluster(tmp_path):
         with socket.socket() as s:
             s.bind(('127.0.0.1',0));ports[service]=s.getsockname()[1]
     urls={k:'http://127.0.0.1:'+str(v) for k,v in ports.items()}
-    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'EVENT_WORKER':'true','COOKIE_SECURE':'false'}
+    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'EVENT_WORKER':'true','TRANSLATION_WORKER':'false','COOKIE_SECURE':'false'}
     processes=[];logs=[]
     try:
         for service in ports:

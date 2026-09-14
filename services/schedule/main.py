@@ -10,17 +10,23 @@ from fastapi.responses import Response
 from pydantic import Field, model_validator
 from sqlalchemy import select, or_
 from services.common.core import database, migrate, setup_app, Input, now, fail, identity, internal, manager, service_secret
-from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event
+from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event, TitleTranslation
+from services.schedule.translation import TitleTranslator, with_translation
 
 engine, DB=database('schedule')
+translator=TitleTranslator(DB)
 DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester_start':'2026-09-01','semester_end':'2027-01-31','anchor_monday':'2026-08-31','anchor_parity':'odd','timezone':'Europe/Moscow','configured':False}
 
 @asynccontextmanager
 async def lifespan(app):
-    service_secret();migrate(engine,Base)
+    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),))
     with DB.begin() as db:
         if not db.get(Settings,1):db.add(Settings(id=1,data=DEFAULT_SETTINGS))
-    yield
+    translator.start()
+    try:
+        yield
+    finally:
+        translator.stop()
 
 app=setup_app('Campus Flow · Schedule',engine,lifespan)
 
@@ -39,13 +45,13 @@ def audit(db,user,action,target,data=None):
 def event(db,kind,item):
     db.add(Event(type=kind,data={'occurrence_id':item.id,'revision':item.revision,'status':item.data['status']}))
 
-def row(item,config):
+def row(item,config,db):
     d={**item.data,'id':item.id,'rule_id':item.rule_id,'original_date':item.original_date,'date':item.date,'revision':item.revision,'overridden':item.overridden}
     tz=ZoneInfo(config['timezone'])
     for field,key in [('start','starts_at'),('end','ends_at')]:
         d[key]=datetime.fromisoformat(f'{item.date}T{d[field]}').replace(tzinfo=tz).isoformat()
     d['parity']=parity(item.date,config)
-    return d
+    return with_translation(d,db)
 
 class ConfigInput(Input):
     revision:int=Field(ge=1)
@@ -156,7 +162,7 @@ def set_settings(data:ConfigInput,request:Request):
 def rules(request:Request):
     u=identity(request);manager(u)
     with DB() as db:
-        return [{**r.data,'id':r.id,'revision':r.revision} for r in db.scalars(select(Rule).where(Rule.archived==False)).all()]
+        return [{**with_translation(r.data,db),'id':r.id,'revision':r.revision} for r in db.scalars(select(Rule).where(Rule.archived==False)).all()]
 
 @app.post('/api/schedule/rules',status_code=201)
 def add_rule(data:RuleInput,request:Request):
@@ -165,7 +171,7 @@ def add_rule(data:RuleInput,request:Request):
         config=settings(db,True).data
         r=Rule(data=data.model_dump(exclude={'revision'}));db.add(r);db.flush()
         generate_rule(db,r,config);conflicts(db);audit(db,u,'rule_created',r.id,r.data)
-        return {**r.data,'id':r.id,'revision':r.revision}
+        return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
 
 @app.put('/api/schedule/rules/{rule_id}')
 def edit_rule(rule_id:str,data:RuleInput,request:Request):
@@ -176,7 +182,7 @@ def edit_rule(rule_id:str,data:RuleInput,request:Request):
         if r.revision!=data.revision:fail('revision_conflict',409)
         before=r.data;r.data=data.model_dump(exclude={'revision'});r.revision+=1
         generate_rule(db,r,config);conflicts(db);audit(db,u,'rule_updated',r.id,{'before':before,'after':r.data})
-        return {**r.data,'id':r.id,'revision':r.revision}
+        return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
 
 @app.delete('/api/schedule/rules/{rule_id}')
 def archive_rule(rule_id:str,request:Request,revision:int):
@@ -195,7 +201,7 @@ def occurrences(request:Request,start:date,end:date,subgroup:int=Query(default=0
     with DB() as db:
         config=settings(db).data
         items=db.scalars(select(Occurrence).where(Occurrence.date>=start.isoformat(),Occurrence.date<=end.isoformat()).order_by(Occurrence.date)).all()
-        return [row(i,config) for i in items if not i.data.get('removed_from_template') and (not subgroup or i.data['subgroup'] in (0,subgroup))]
+        return [row(i,config,db) for i in items if not i.data.get('removed_from_template') and (not subgroup or i.data['subgroup'] in (0,subgroup))]
 
 @app.get('/api/schedule/occurrences/{oid}')
 def get_occurrence(oid:str,request:Request):
@@ -206,7 +212,7 @@ def fetch_occurrence(oid):
     with DB() as db:
         item=db.get(Occurrence,oid)
         if not item:fail('not_found',404)
-        return row(item,settings(db).data)
+        return row(item,settings(db).data,db)
 
 @app.get('/internal/occurrences/{oid}')
 def internal_occurrence(oid:str,request:Request):
@@ -221,13 +227,13 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         if not item:fail('not_found',404)
         if item.revision!=data.revision:fail('revision_conflict',409)
         if not config['semester_start']<=data.date.isoformat()<=config['semester_end']:fail('outside_semester',422)
-        before=row(item,config)
+        before=row(item,config,db)
         item.data={**data.model_dump(mode='json',exclude={'revision','date'}),'demo':item.data.get('demo',False)}
         item.date=data.date.isoformat();item.overridden=True;item.revision+=1;item.updated_at=now()
         db.flush();conflicts(db)
         event(db,'occurrence.cancelled' if data.status=='cancelled' else 'occurrence.updated',item)
-        audit(db,u,'occurrence_updated',oid,{'before':before,'after':row(item,config)})
-        return row(item,config)
+        audit(db,u,'occurrence_updated',oid,{'before':before,'after':row(item,config,db)})
+        return row(item,config,db)
 
 @app.get('/api/schedule/events')
 def public_events(request:Request,after:int=Query(default=0,ge=0)):
@@ -266,7 +272,7 @@ def export_calendar(request:Request,start:date,end:date,lang:Literal['ru','en']=
     lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Flow//BVТ2302//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH']
     for item in items:
         def utc(key):return datetime.fromisoformat(item[key]).astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-        title=item['title_en'] if lang=='en' and item['title_en'] else item['title']
+        title=(item['title_en'] or item.get('title_en_auto') or item['title']) if lang=='en' else item['title']
         lines+=['BEGIN:VEVENT',f'UID:{item["id"]}@campus-flow',f'SEQUENCE:{item["revision"]}',f'DTSTAMP:{now().strftime("%Y%m%dT%H%M%SZ")}',f'DTSTART:{utc("starts_at")}',f'DTEND:{utc("ends_at")}',f'SUMMARY:{ics_escape(title)}',f'LOCATION:{ics_escape(item["room"])}',f'DESCRIPTION:{ics_escape(item["teacher"]+" · "+item["note"]+" "+item["meeting_url"])}',f'STATUS:{"CANCELLED" if item["status"]=="cancelled" else "TENTATIVE" if item["status"]=="pending" else "CONFIRMED"}','END:VEVENT']
     lines+=['END:VCALENDAR']
     return Response('\r\n'.join(fold_ics(s) for s in lines)+'\r\n',media_type='text/calendar',headers={'Content-Disposition':'attachment; filename="campus-flow.ics"'})
@@ -297,3 +303,13 @@ def remove_demo(request:Request):
                 item.data={**item.data,'status':'cancelled','removed_from_template':True};item.revision+=1;event(db,'occurrence.cancelled',item)
         audit(db,u,'demo_removed','schedule')
     return {'ok':True}
+
+class TitlePreview(Input):
+    title:str=Field(min_length=2,max_length=120)
+
+@app.post('/api/schedule/title-preview')
+def preview_title(data:TitlePreview,request:Request):
+    user=identity(request);manager(user)
+    translator.limit_preview(user['id'])
+    value=translator.resolve(data.title)
+    return {'title_en_auto':value,'translation_pending':not bool(value)}
