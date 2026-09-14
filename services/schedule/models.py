@@ -46,3 +46,9 @@ class Event(Base):
     type:Mapped[str]=mapped_column(String(80))
     data:Mapped[dict]=mapped_column(JSON)
     at:Mapped[datetime]=mapped_column(DateTime,default=now)
+
+class TitleTranslation(Base):
+    __tablename__='title_translations'
+    title:Mapped[str]=mapped_column(String(120),primary_key=True)
+    translated:Mapped[str]=mapped_column(String(120),default='')
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=now)

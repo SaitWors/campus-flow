@@ -79,7 +79,7 @@ services:
     depends_on:
       schedule-db: {condition: service_healthy}
       auth: {condition: service_healthy}
-    networks: [services_net, schedule_data_net]
+    networks: [services_net, schedule_data_net, translation_net]
   queue:
     <<: *app
     command: [uvicorn, services.queue.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
@@ -90,6 +90,28 @@ services:
       queue-db: {condition: service_healthy}
       schedule: {condition: service_healthy}
     networks: [services_net, queue_data_net]
+  translator:
+    build:
+      context: .
+      dockerfile: infra/translator.Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:uid=1032,gid=1032,mode=1777
+      - /app/db:uid=1032,gid=1032,mode=0700
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 3g
+    cpus: 1.0
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, ./venv/bin/python, scripts/healthcheck.py]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks: [translation_net]
   web:
     build:
       context: .
@@ -114,6 +136,7 @@ volumes:
   queue_data:
 networks:
   services_net:
+  translation_net: {internal: true}
   auth_data_net: {internal: true}
   schedule_data_net: {internal: true}
   queue_data_net: {internal: true}

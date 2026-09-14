@@ -62,6 +62,14 @@ def run(urls,setup_key):
         deputy.request('PATCH','/api/auth/users/'+students[0].user['id'],{'role':'admin','status':'active','subgroup':1},expected=403)
         deputy.request('GET','/api/auth/users')
         admin.request('PATCH','/api/auth/users/'+admin.user['id'],{'role':'student','status':'active','subgroup':1},expected=409)
+
+        bad.request('POST','/api/schedule/title-preview',{'title':'Базы данных'},expected=401)
+        students[0].request('POST','/api/schedule/title-preview',{'title':'Базы данных'},expected=403)
+        old_csrf=admin.csrf;admin.csrf='invalid'
+        admin.request('POST','/api/schedule/title-preview',{'title':'Базы данных'},expected=403)
+        admin.csrf=old_csrf
+        admin.request('POST','/api/schedule/title-preview',{'title':'Базы данных','url':'http://169.254.169.254/'},expected=422)
+        bad.request('POST','/api/auth/login',{'email':'x'*230+'@example.test','password':PASSWORD},expected=401)
         passed('Registration, approval, roles, invite limits, CSRF and origin checks')
 
         today=datetime.now(timezone.utc).date();start=today-timedelta(days=7);end=today+timedelta(days=21)

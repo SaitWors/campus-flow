@@ -57,3 +57,8 @@ The integration is responsible for de-duplication, retry policy and its cursor. 
 `GET /api/schedule/calendar.ics?start=YYYY-MM-DD&end=YYYY-MM-DD&lang=ru&subgroup=1` exports an authenticated snapshot. `subgroup=0` includes both subgroups. `lang=en` uses an English subject title when one is provided. UIDs remain stable across moves; cancelled classes are exported with CANCELLED status. Lines are folded to 75 UTF-8 octets.
 
 Import the `.ics` into Google Calendar, Apple Calendar or Outlook. This is not a persistent public subscription link: calendar applications cannot use the site's login cookie in a subscription. Re-export to obtain changes; external calendar importers vary in how they handle updates and removals. Sharing public subscription tokens would require a separate, deliberate feature.
+
+
+## Title translation
+
+Responses add title_en_auto and translation_pending; do not send these computed fields in mutation bodies. Empty title_en enables automatic translation. Manager-only POST /api/schedule/title-preview accepts {"title":"Базы данных"} with cookie/CSRF protection. It accepts no provider URLs or keys. English ICS uses manual, automatic, then original titles.

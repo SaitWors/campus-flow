@@ -49,17 +49,23 @@ def database(service):
     return engine, sessionmaker(engine, expire_on_commit=False)
 
 
-def migrate(engine, base):
+def migrate(engine, base, migrations=()):
     with engine.begin() as conn:
         if engine.dialect.name == 'postgresql':
             conn.execute(text('SELECT pg_advisory_xact_lock(7402302)'))
         conn.execute(text('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TIMESTAMP NOT NULL)'))
         version = conn.execute(text('SELECT MAX(version) FROM schema_migrations')).scalar() or 0
-        if version > 1:
+        if version > 1 + len(migrations):
             raise RuntimeError('Database schema is newer than this application. Restore the matching application version.')
         if version < 1:
             base.metadata.create_all(conn)
             conn.execute(text('INSERT INTO schema_migrations(version, applied_at) VALUES (1, :at)'), {'at': now()})
+
+
+        for target, migration in enumerate(migrations, start=2):
+            if version < target:
+                migration(conn)
+                conn.execute(text('INSERT INTO schema_migrations(version, applied_at) VALUES (:version, :at)'), {'version': target, 'at': now()})
 
 
 def service_secret():

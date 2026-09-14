@@ -39,7 +39,7 @@ def audit(db, actor, action, target, data=None):
 def rate(request, key, limit=12):
     # Gateway replaces this header; service ports are never published.
     ip = request.headers.get('x-real-ip', request.client.host if request.client else 'local')
-    bucket = f'{key}:{digest(ip)}'
+    bucket = 'rate:' + digest(f'{key}:{ip}')
     with DB.begin() as db:
         # Serialize creation too. One row; traffic is tiny for one student group.
         db.execute(select(Gate).where(Gate.id == 'admin-guard').with_for_update()).scalar_one()
