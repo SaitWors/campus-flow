@@ -1,5 +1,7 @@
 # Campus Flow — расписание БВТ2302
 
+> **PR2:** уведомления, колокольчик, мобильное PWA и отдельный сервис объявлений. [Уведомления](docs/NOTIFICATIONS_RU.md) · [Установка на сервер друга](docs/DEPLOY_FRIEND_RU.md). Обычный запуск теперь без модели; для автоперевода включить COMPOSE_PROFILES=translation и TRANSLATION_WORKER=true. Новые бэкапы включают четыре БД.
+
 Сайт учебной группы МТУСИ, 4 курс, направление 09.03.01. Расписание, календарь, очередь на сдачу работ, регистрация по приглашению, роли и администрирование. Интерфейс на русском и английском; светлая, тёмная, чёрная, ультрачёрная и системная темы.
 
 **Начните с [START_HERE_RU.md](START_HERE_RU.md).** Там описаны запуск, создание первого администратора и заполнение настоящего расписания.
@@ -86,3 +88,7 @@ npm run dev
 ## English quick start
 
 Extract the complete archive. On Windows run `START_WINDOWS.cmd`; on Linux run `bash scripts/start.sh`. Open http://localhost:8080, copy `SETUP_KEY` from the generated `.env`, and create your administrator account. Switch the interface to English, configure the semester in **Management → Semester**, add recurring classes, create invitations, approve students and appoint the representative/deputy. No real timetable or accounts are preloaded. PostgreSQL data lives in named Docker volumes. Never use `docker compose down --volumes` on a live installation unless you intend to erase its databases.
+
+## Guest access and private questions (PR2)
+
+Guests can browse a deliberately limited public timetable at /#guest. Approved members can send private questions to a selected head, deputy or administrator. Administrators can additionally hold a head/deputy group role. [Russian guide, privacy boundaries and migrations](docs/GUEST_QUESTIONS_ROLES_RU.md).

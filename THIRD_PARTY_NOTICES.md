@@ -30,3 +30,11 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ## Local machine translation
 
 LibreTranslate v1.9.6 runs as a separate unmodified service. License: GNU AGPL-3.0; corresponding [source](https://github.com/LibreTranslate/LibreTranslate/tree/v1.9.6) and [full license](https://github.com/LibreTranslate/LibreTranslate/blob/v1.9.6/LICENSE). Project-specific Docker configuration is included here. Language packages are installed from the official Argos Translate index during build; preserve notices distributed with those packages and the image when redistributing it. Models are not committed in this repository.
+
+## PR2
+
+- BellRing SVG is imported from the existing Lucide React dependency: [icon](https://lucide.dev/icons/bell-ring), [ISC license](https://lucide.dev/license). No remote icon CDN is used.
+- Notification badge motion was adapted from the user's supplied TutCSS.css / TutReact.js, attributed there to Transitions.dev. This attribution does not assert a separate license for that supplied snippet.
+- Web Push encryption uses [pywebpush](https://github.com/web-push-libs/pywebpush), MPL-2.0, and its declared dependencies. Source files of these packages are included in the installed Python distributions; this project does not modify them.
+- The optional LibreTranslate AGPL-3.0 image has one documented source change in infra/translator.Dockerfile: the startup package-count condition accepts one installed direction. All project changes and the installer source are in this repository; the upstream version/source links above remain applicable.
+- PWA PNG icons are project-owned geometric calendar drawings generated reproducibly by apps/web/scripts/create-icons.mjs. No university seal or external brand artwork is used.

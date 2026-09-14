@@ -10,8 +10,8 @@ from fastapi import Request, Query, HTTPException
 from pydantic import Field
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
-from services.common.core import database, migrate, setup_app, Input, now, uid, digest, fail, identity, manager, remote, service_secret
-from services.queue.models import Base, Queue, Entry, Command, Audit, Cursor
+from services.common.core import database, migrate, setup_app, Input, now, uid, digest, fail, identity, manager, remote, service_secret, internal
+from services.queue.models import Base, Queue, Entry, Command, Audit, Cursor, Event
 
 engine,DB=database('queue')
 ACTIVE=('waiting','called')
@@ -75,7 +75,7 @@ async def event_worker():
 
 @asynccontextmanager
 async def lifespan(app):
-    service_secret();migrate(engine,Base)
+    service_secret();migrate(engine,Base,(lambda conn: Event.__table__.create(conn,checkfirst=True),))
     with DB.begin() as db:
         if not db.get(Cursor,1):db.add(Cursor(id=1))
     task=asyncio.create_task(event_worker()) if os.getenv('EVENT_WORKER','true')=='true' else None
@@ -183,6 +183,8 @@ def action(qid:str,data:Action,request:Request):
     # Never admit or call a student using cached schedule.
     item=lesson(oid)
     with DB.begin() as db:
+        # Serialize event sequence allocation with commit order and reconciliation.
+        db.execute(select(Cursor).where(Cursor.id==1).with_for_update()).scalar_one()
         q=locked(db,qid)
         old=db.get(Command,command_key)
         if old:
@@ -243,6 +245,7 @@ def action(qid:str,data:Action,request:Request):
             try:db.flush()
             except IntegrityError:fail('student_busy_elsewhere',409)
             audit(db,q,u,'called',e.id)
+            db.add(Event(type='queue.called',data={'user_id':e.user_id,'entry_id':e.id,'occurrence_id':q.occurrence_id}))
         elif data.action in ('done','skip','remove'):
             if not target:fail('entry_not_active',409)
             if data.action in ('done','skip'):
@@ -270,3 +273,30 @@ def activity(request:Request):
     u=identity(request);manager(u)
     with DB() as db:
         return [{'id':a.id,'actor':a.actor,'action':a.action,'target':a.target,'at':a.at.isoformat()+'Z','data':a.data} for a in db.scalars(select(Audit).order_by(Audit.at.desc()).limit(200))]
+
+
+@app.get('/internal/events/head')
+def event_head(request:Request):
+    internal(request)
+    with DB() as db:return {'seq':db.scalar(select(func.max(Event.seq))) or 0}
+
+@app.get('/internal/events')
+def event_feed(request:Request,after:int=Query(default=0,ge=0)):
+    internal(request)
+    with DB() as db:
+        return [{'seq':e.seq,'id':e.id,'type':e.type,'data':e.data,'at':e.at.isoformat()+'Z'}
+                for e in db.scalars(select(Event).where(Event.seq>after).order_by(Event.seq).limit(200))]
+
+@app.get('/internal/calls/{entry_id}')
+def call_status(entry_id:str,request:Request):
+    internal(request)
+    with DB() as db:
+        entry=db.get(Entry,entry_id)
+        if not entry or entry.status!='called':return {'active':False}
+        q=db.get(Queue,entry.queue_id)
+        oid=q.occurrence_id
+        active=q.state=='open'
+        revision=q.lesson_revision
+    item=lesson(oid)
+    return {'active':active and item['revision']==revision and item['status']=='confirmed' and item['queue_enabled'] and current_utc()<datetime.fromisoformat(item['ends_at']),
+            'ends_at':datetime.fromisoformat(item['ends_at']).astimezone(timezone.utc).isoformat()}

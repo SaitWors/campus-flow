@@ -5,9 +5,9 @@ umask 077
 backup_dir="backups/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$backup_dir"
 cp .env "$backup_dir/config.env"
-docker compose stop web queue schedule auth
-trap 'docker compose start auth schedule queue web' EXIT
-for service in auth schedule queue; do
+docker compose stop web notifications queue schedule auth
+trap 'docker compose start auth schedule queue notifications web' EXIT
+for service in auth schedule queue notifications; do
     docker compose exec -T "$service-db" pg_dump -U "$service" -d "$service" -Fc > "$backup_dir/$service.dump"
     test -s "$backup_dir/$service.dump"
 done

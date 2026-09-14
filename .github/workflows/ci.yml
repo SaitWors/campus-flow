@@ -23,6 +23,9 @@ jobs:
       - run: npm test && npm run build
         working-directory: apps/web
   compose:
+    env:
+      COMPOSE_PROFILES: translation
+      TRANSLATION_WORKER: 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -33,6 +36,10 @@ jobs:
       - run: pip install httpx==0.28.1
       - name: Real PostgreSQL and gateway workflow
         run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
+      - name: Notification integration workflow
+        run: python -m scripts.verify_notifications
+      - name: Guest, dual roles and private question workflow
+        run: python -m scripts.verify_community
       - name: Real offline Russian to English translation
         run: python -m scripts.verify_translation
       - name: Verify API schemas and private route boundary
@@ -40,6 +47,7 @@ jobs:
           curl --fail http://localhost:8080/api/auth/openapi.json -o /tmp/auth-schema.json
           curl --fail http://localhost:8080/api/schedule/openapi.json -o /tmp/schedule-schema.json
           curl --fail http://localhost:8080/api/queues/openapi.json -o /tmp/queue-schema.json
+          curl --fail http://localhost:8080/api/notifications/openapi.json -o /tmp/notifications-schema.json
           test -z "$(docker compose port translator 5000 2>/dev/null || true)"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/internal/events)" = 404
       - uses: actions/setup-node@v4
@@ -51,7 +59,12 @@ jobs:
       - name: Browser checks
         env:
           NODE_PATH: /tmp/campus-browser/node_modules
-        run: node scripts/check_ui.cjs
+        run: |
+          browser_status=0
+          node scripts/check_ui.cjs || browser_status=1
+          node scripts/check_community_ui.cjs || browser_status=1
+          node scripts/check_notifications_ui.cjs || browser_status=1
+          exit "$browser_status"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -68,5 +81,38 @@ jobs:
         if: failure()
         run: docker compose logs --tail 150
       - name: Teardown ephemeral CI data
+        if: always()
+        run: docker compose down --volumes
+  lightweight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Default launch does not build or start a language model
+        run: |
+          bash scripts/start.sh
+          test -z "$(docker compose --profile translation ps -q translator)"
+          docker compose exec -T notifications python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200"
+      - run: pip install httpx==0.28.1
+      - run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
+      - run: python -m scripts.verify_notifications
+      - run: python -m scripts.verify_community
+      - name: Lightweight translation fallback
+        run: |
+          python - <<'PY'
+          import httpx
+          with httpx.Client(base_url='http://localhost:8080',trust_env=False) as c:
+              s=c.post('/api/auth/login',json={'email':'admin@example.test','password':'Integration-test-password-2026'}).json()
+              r=c.post('/api/schedule/title-preview',json={'title':'Технологии баз данных'},headers={'X-CSRF-Token':s['csrf']})
+              assert r.status_code==200 and r.json()['translation_enabled'] is False
+              assert r.json()['translation_pending'] is False
+          print('PASS: default stack without translator, all four APIs and explicit manual-translation fallback')
+          PY
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail 80
+      - name: Teardown disposable data
         if: always()
         run: docker compose down --volumes

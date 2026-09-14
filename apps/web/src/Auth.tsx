@@ -5,7 +5,7 @@ import type {User} from './types';
 import {Button,Field,Notice,useApp,useJob,useT} from './ui';
 
 export type Session={user:User;csrf:string};
-export default function Auth({setup,onSession}:{setup:boolean;onSession:(s:Session)=>void}){
+export default function Auth({setup,onSession,onGuest}:{setup:boolean;onSession:(s:Session)=>void;onGuest:()=>void}){
  const t=useT();const {lang,setLang}=useApp();const job=useJob();
  const [mode,setMode]=useState<'login'|'register'|'reset'>( 'login');
  const [done,setDone]=useState('');const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [token,setToken]=useState('');const [subgroup,setSubgroup]=useState(1);
@@ -26,5 +26,6 @@ export default function Auth({setup,onSession}:{setup:boolean;onSession:(s:Sessi
  {job.error&&<Notice error>{job.error}</Notice>}<Button type="submit" busy={job.busy} className="full-width">{t(setup?'createAdmin':mode==='register'?'register':mode==='reset'?'resetSubmit':'login')}<ArrowRight size={18}/></Button>
  </form>}
  {!setup&&!done&&<div className="auth-links">{mode==='login'?<><button onClick={()=>change('register')}>{t('noAccount')} <strong>{t('register')}</strong></button><button onClick={()=>change('reset')}>{t('forgot')}</button></>:<button onClick={()=>change('login')}>{t('backLogin')}</button>}</div>}
+ {!setup&&<Button variant="secondary" className="full-width guest-enter" onClick={onGuest}><CalendarDays size={18}/>{t('guestEnter')}</Button>}
  </div></section></main>;
 }

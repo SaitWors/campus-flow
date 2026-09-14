@@ -47,7 +47,8 @@ def with_translation(data, db):
     cached = None if data.get('title_en') else db.get(TitleTranslation, data['title'])
     auto = cached.translated if cached else ''
     return {**data, 'title_en_auto': auto,
-            'translation_pending': not bool(data.get('title_en') or auto)}
+            'translation_pending': os.getenv('TRANSLATION_WORKER', 'true').lower() == 'true' and not bool(data.get('title_en') or auto),
+            'translation_enabled': os.getenv('TRANSLATION_WORKER', 'true').lower() == 'true'}
 
 
 class TitleTranslator:
@@ -85,6 +86,8 @@ class TitleTranslator:
                 cached = db.get(TitleTranslation, title)
                 if cached and (cached.translated or cached.updated_at > now() - timedelta(seconds=RETRY_SECONDS)):
                     return cached.translated
+            if os.getenv('TRANSLATION_WORKER', 'true').lower() != 'true':
+                return ''
             try:
                 value = self.translate(title)
             except (httpx.HTTPError, ValueError, TypeError):

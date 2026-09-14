@@ -16,7 +16,7 @@ class Client:
         self.urls=urls;self.http=httpx.Client(timeout=20,trust_env=False)
         self.csrf='';self.user=None
     def request(self,method,path,data=None,key=None,expected=200):
-        service='auth' if path.startswith('/api/auth') else 'schedule' if path.startswith('/api/schedule') else 'queue'
+        service='auth' if path.startswith('/api/auth') else 'schedule' if path.startswith('/api/schedule') else 'notifications' if path.startswith('/api/notifications') else 'queue'
         headers={'X-CSRF-Token':self.csrf}
         if key:headers['Idempotency-Key']=key
         r=self.http.request(method,self.urls[service]+path,json=data,headers=headers)
