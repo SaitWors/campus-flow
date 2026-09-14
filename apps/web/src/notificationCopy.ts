@@ -39,6 +39,7 @@ const ru = {
   validation:'Проверьте поля и часы: начало и конец тихого времени должны отличаться.',
 };
 const en: Record<keyof typeof ru,string> = {
+  questions:'Private questions',
   notifications:'Notifications', inboxHint:'Timetable changes, your queue and group announcements.',
   empty:'All quiet for now', emptyHint:'New updates will appear here. Stay in the loop.',
   markAll:'Mark all read', markRead:'Mark read', open:'Open', unread:'Unread', all:'All',

@@ -88,3 +88,7 @@ OpenAPI: /api/notifications/openapi.json. Внешний Nginx не публик
 - [Microsoft: Push for Edge PWA](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/push)
 - [pywebpush: библиотека шифрования Web Push](https://github.com/web-push-libs/pywebpush)
 - [Lucide BellRing](https://lucide.dev/icons/bell-ring), [лицензия ISC](https://lucide.dev/license)
+
+## Гости и личные вопросы
+
+Гости просматривают только публичное расписание. Подтверждённые участники могут вести личную переписку с выбранным сотрудником; категория push «Личные вопросы» настраивается отдельно. Содержание вопросов не попадает в push. [Правила доступа, роли и сценарии](GUEST_QUESTIONS_ROLES_RU.md).

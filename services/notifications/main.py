@@ -17,7 +17,7 @@ from services.common.core import (
 )
 from services.notifications.models import (
     Announcement, Audit, Base, Cursor, Delivery, Guard, Notification,
-    Preference, PushKey, Subscription,
+    Preference, PushKey, Subscription, Question, QuestionMessage,
 )
 from services.notifications.questions import accessible, install as install_questions, migrate_questions
 from services.notifications.push import DEFAULTS, generate_keys, quiet, send, validate_subscription
@@ -234,6 +234,9 @@ def cleanup():
         db.execute(delete(Delivery).where(~Delivery.subscription_id.in_(select(Subscription.id))))
         db.execute(delete(Announcement).where(Announcement.expires_at < now() - timedelta(days=90)))
         db.execute(delete(Audit).where(Audit.at < now() - timedelta(days=90)))
+        old_questions = select(Question.id).where(Question.closed == True, Question.updated_at < now() - timedelta(days=180))
+        db.execute(delete(QuestionMessage).where(QuestionMessage.question_id.in_(old_questions)))
+        db.execute(delete(Question).where(Question.id.in_(old_questions)))
 
 
 async def worker():

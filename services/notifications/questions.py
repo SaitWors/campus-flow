@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from fastapi import Query, Request
 from pydantic import Field, model_validator
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 
 from services.common.core import Input, digest, fail, now
 from services.notifications.models import Audit, Question, QuestionMessage

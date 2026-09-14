@@ -79,3 +79,7 @@ notifications owns its PostgreSQL inbox, preferences, subscriptions, announcemen
 The frontend is an installable PWA with a Service Worker for Web Push and a network-only offline fallback. API data is never cached in the worker. Four database backup/restore scripts include the notification keys.
 
 See [notification API and threat boundaries](NOTIFICATIONS_RU.md) and [deployment](DEPLOY_FRIEND_RU.md). The translator is now an optional Compose profile with a pinned RU → EN package, resumable download and integrity verification.
+
+## Community access
+
+Auth owns the optional administrator group_role (schema 2). Schedule serves two explicit guest GET routes using a public-field allowlist; private authenticated responses are never serialized wholesale for guests. Notifications also owns questions and question_messages (schema 2): access is by owner/recipient relationship plus the recipient's current staff role. Other administrators have no automatic conversation access. New-message notification creation shares the message transaction. [Access model and API](GUEST_QUESTIONS_ROLES_RU.md).

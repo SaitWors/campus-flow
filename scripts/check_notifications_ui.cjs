@@ -43,7 +43,7 @@ const base='http://localhost:8080';
   console.log('VISUAL_DESKTOP_JPEG:'+(await page.screenshot({type:'jpeg',quality:55,fullPage:false})).toString('base64'));
   for(const width of [360,390,768]){
    await page.setViewportSize({width,height:844});
-   for(const route of ['schedule','calendar','queues','notifications','preferences','admin']){
+   for(const route of ['schedule','calendar','queues','questions','notifications','preferences','admin']){
     await page.goto('/#'+route);
     await page.locator('main h1').waitFor();
     if(route==='preferences')await page.getByRole('heading',{name:'Notification settings',exact:true}).waitFor();

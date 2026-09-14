@@ -119,7 +119,7 @@ export function NotificationSettings(){
  }).catch(e=>active&&setError(nError(lang,e)));return()=>{active=false;};},[user.id,attempt,lang]);
  async function run(job:()=>Promise<unknown>,message?:string){setBusy(true);setError('');try{await job();if(message)notify(message);}catch(e){setError(nError(lang,e));}finally{setBusy(false);}}
  async function refreshDevices(){setDevices(await api<Device[]>('/api/notifications/subscriptions'));reload();}
- const bool=(key:'schedule'|'queue'|'announcements'|'important_popups'|'show_details'|'quiet_enabled',text:NKey)=><label className="notification-toggle"><span>{t(text)}</span><input type="checkbox" checked={pref?.[key]||false} onChange={e=>setPref(p=>p&&({...p,[key]:e.target.checked}))}/></label>;
+ const bool=(key:'schedule'|'queue'|'announcements'|'questions'|'important_popups'|'show_details'|'quiet_enabled',text:NKey)=><label className="notification-toggle"><span>{t(text)}</span><input type="checkbox" checked={pref?.[key]||false} onChange={e=>setPref(p=>p&&({...p,[key]:e.target.checked}))}/></label>;
  return <section className="panel notification-settings" id="notification-settings"><div className="section-title"><div><h2>{t('settings')}</h2><p className="muted">{t('preferencesHint')}</p></div><BellRing size={24}/></div>
  {error&&<Notice error>{error}<button className="text-link" onClick={()=>setAttempt(n=>n+1)}>{t('retry')}</button></Notice>}
  {!pref||!config?<Loading/>:<>
