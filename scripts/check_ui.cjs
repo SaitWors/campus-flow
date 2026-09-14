@@ -8,7 +8,7 @@ const fs=require('node:fs/promises');
   const errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   const login=await context.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}});
   if(!login.ok())throw new Error('CI sign-in failed');
-  await context.addInitScript(()=>localStorage.setItem('cf-language','en'));
+  await context.addInitScript(()=>{if(location.origin==='http://localhost:8080')localStorage.setItem('cf-language','en');});
   const page=await context.newPage();page.setDefaultTimeout(20000);
   await page.goto('/#preferences');
   await fs.mkdir('test-results',{recursive:true});
