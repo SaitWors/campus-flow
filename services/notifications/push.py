@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from pywebpush import webpush, WebPushException
 
 DEFAULTS = {
-    'schedule': True, 'queue': True, 'announcements': True,
+    'schedule': True, 'queue': True, 'announcements': True, 'questions': True,
     'important_popups': True, 'show_details': False,
     'quiet_enabled': False, 'quiet_start': '22:00', 'quiet_end': '08:00',
     'timezone': 'Europe/Moscow', 'language': 'ru',

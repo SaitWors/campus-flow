@@ -41,6 +41,7 @@ def service(tmp_path, monkeypatch):
         return user
     def auth(path, **kwargs):
         if path=='/internal/notification-recipients':return list(members.values())
+        if path=='/internal/question-recipients':return [u for u in members.values() if u['role'] in ('admin','head','deputy')]
         if path=='/internal/push-check':return {**members[kwargs['json']['user_id']],**status}
         raise AssertionError(path)
     monkeypatch.setattr(m,'identity',identity)
@@ -226,3 +227,63 @@ def test_control_characters_are_rejected_before_postgresql(service):
     assert client.post('/api/notifications/announcements',json={**PUBLISH,'body':'bad\u0000text'},headers={**AUTH,**KEY}).status_code==422
     _,data=subscribe(client)
     assert client.post('/api/notifications/subscriptions',json={**data,'label':'bad\u0000label'},headers=headers()).status_code==422
+
+
+def test_private_questions_ownership_and_role_revocation(service):
+    m,client,members,_=service
+    directory=client.get('/api/notifications/questions/recipients',headers=headers()).json()
+    assert [u['id'] for u in directory]==[ADMIN['id']]
+    body={'recipient_id':ADMIN['id'],'title':'Private subject','body':'Private medical appointment details'}
+    assert client.post('/api/notifications/questions',json=body,headers=KEY).status_code==401
+    assert client.post('/api/notifications/questions',json=body,headers={'X-User':STUDENT['id'],**KEY}).status_code==403
+    response=client.post('/api/notifications/questions',json=body,headers={**headers(),**KEY})
+    assert response.status_code==201,response.text
+    qid=response.json()['id']; path='/api/notifications/questions/'+qid
+    assert client.post('/api/notifications/questions',json=body,headers={**headers(),**KEY}).json()['id']==qid
+    assert client.post('/api/notifications/questions',json={**body,'body':'Changed body'},headers={**headers(),**KEY}).status_code==409
+    assert client.get(path,headers=headers(OTHER)).status_code==404
+    assert client.get('/api/notifications/questions',headers=headers(OTHER)).json()['total']==0
+    # Even a different administrator does not get access to a private thread.
+    members[OTHER['id']]['role']='admin'
+    assert client.get(path,headers=headers(OTHER)).status_code==404
+    assert client.post(path+'/messages',json={'body':'Intrusion'},headers={**headers(OTHER),**KEY}).status_code==404
+    assert client.patch(path,json={'revision':1,'closed':True},headers=headers(OTHER)).status_code==404
+    assert client.post(path+'/read',json={'revision':99},headers=headers(OTHER)).status_code==404
+    detail=client.get(path,headers=AUTH).json()
+    assert detail['unread'] and detail['messages'][0]['body']==body['body']
+    client.post(path+'/read',json={'revision':1},headers=AUTH)
+    assert not client.get(path,headers=AUTH).json()['unread']
+    answer={'body':'Please check the new timetable.'}
+    reply=client.post(path+'/messages',json=answer,headers={**AUTH,**KEY})
+    assert reply.status_code==201,reply.text
+    assert client.post(path+'/messages',json=answer,headers={**AUTH,**KEY}).json()==reply.json()
+    assert len(client.get(path,headers=headers()).json()['messages'])==2
+    inbox=client.get('/api/notifications/inbox',headers=headers()).json()
+    assert any(i['category']=='questions' for i in inbox['items'])
+    encoded=json.dumps(inbox)
+    assert body['title'] not in encoded and body['body'] not in encoded and answer['body'] not in encoded
+    assert client.patch(path,json={'revision':1,'closed':True},headers=headers()).status_code==409
+    assert client.patch(path,json={'revision':2,'closed':True},headers=headers()).status_code==200
+    assert client.post(path+'/messages',json={'body':'Follow up'},headers={**headers(),'Idempotency-Key':'question-follow-up-00001'}).status_code==409
+    assert client.patch(path,json={'revision':3,'closed':False},headers=headers()).status_code==200
+    # Losing the addressed staff role revokes messages AND notification visibility.
+    members[ADMIN['id']]['role']='student'
+    assert client.get(path,headers=AUTH).status_code==404
+    assert client.get('/api/notifications/questions',headers=AUTH).json()['total']==0
+    assert not client.get('/api/notifications/inbox',headers=AUTH).json()['items']
+    assert client.post(path+'/messages',json={'body':'Are you there?'},headers={**headers(),'Idempotency-Key':'question-follow-up-00002'}).status_code==409
+    # The owner can still read and close their own thread after departure.
+    assert client.get(path,headers=headers()).status_code==200
+    assert client.patch(path,json={'revision':4,'closed':True},headers=headers()).status_code==200
+
+
+def test_question_limits_and_input_validation(service):
+    _,client,_,_=service
+    body={'recipient_id':ADMIN['id'],'title':'Question','body':'A valid question.'}
+    for extra in ({'body':'Bad\x00text'},{'title':'Bad\nsubject'}):
+        assert client.post('/api/notifications/questions',json={**body,**extra},headers={**headers(),**KEY}).status_code==422
+    assert client.post('/api/notifications/questions',json={**body,'recipient_id':OTHER['id']},headers={**headers(),**KEY}).status_code==409
+    for n in range(5):
+        r=client.post('/api/notifications/questions',json=body,headers={**headers(),'Idempotency-Key':'limit-question-key-'+str(n)})
+        assert r.status_code==201,r.text
+    assert client.post('/api/notifications/questions',json=body,headers={**headers(),'Idempotency-Key':'limit-question-key-6'}).status_code==429

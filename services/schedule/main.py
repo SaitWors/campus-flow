@@ -319,3 +319,34 @@ def preview_title(data:TitlePreview,request:Request):
 def event_head(request:Request):
     internal(request)
     with DB() as db:return {'seq':db.scalar(select(func.max(Event.seq))) or 0}
+
+
+# Guest responses use explicit public fields. Never reuse an authenticated
+# response wholesale: private meeting links, notes, people and queues stay private.
+PUBLIC_LESSON_FIELDS = {
+    'id', 'title', 'title_en', 'title_en_auto', 'kind', 'room', 'mode',
+    'start', 'end', 'subgroup', 'status', 'date', 'starts_at', 'ends_at',
+    'parity', 'demo',
+}
+PUBLIC_SETTINGS_FIELDS = set(DEFAULT_SETTINGS)
+
+
+@app.get('/api/schedule/guest/settings')
+def guest_settings():
+    with DB() as db:
+        s = settings(db)
+        return {k: v for k, v in s.data.items() if k in PUBLIC_SETTINGS_FIELDS}
+
+
+@app.get('/api/schedule/guest/occurrences')
+def guest_occurrences(start:date, end:date, subgroup:int=Query(default=0,ge=0,le=2)):
+    if end < start or (end - start).days > 42:
+        fail('range_too_large',422)
+    with DB() as db:
+        config = settings(db).data
+        items = db.scalars(select(Occurrence).where(
+            Occurrence.date >= start.isoformat(), Occurrence.date <= end.isoformat()
+        ).order_by(Occurrence.date, Occurrence.id)).all()
+        return [{k:v for k,v in row(item,config,db).items() if k in PUBLIC_LESSON_FIELDS}
+                for item in items if not item.data.get('removed_from_template') and
+                (not subgroup or item.data['subgroup'] in (0,subgroup))]

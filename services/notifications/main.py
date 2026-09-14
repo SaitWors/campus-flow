@@ -19,6 +19,7 @@ from services.notifications.models import (
     Announcement, Audit, Base, Cursor, Delivery, Guard, Notification,
     Preference, PushKey, Subscription,
 )
+from services.notifications.questions import accessible, install as install_questions, migrate_questions
 from services.notifications.push import DEFAULTS, generate_keys, quiet, send, validate_subscription
 
 engine, DB = database('notifications')
@@ -43,6 +44,8 @@ def preferences(db, user_id):
 
 
 def visible(data, user):
+    if data.get('audience') == 'question':
+        return accessible(data, user)
     audience = data.get('audience', 'all')
     return (audience == 'all' or
             (audience == 'managers' and user['role'] in ('admin', 'head', 'deputy')) or
@@ -264,7 +267,7 @@ async def worker():
 @asynccontextmanager
 async def lifespan(app):
     service_secret()
-    migrate(engine, Base)
+    migrate(engine, Base, (migrate_questions,))
     with DB.begin() as db:
         if not db.get(Guard, 1):
             db.add(Guard(id=1))
@@ -305,6 +308,7 @@ class PreferencesInput(Input):
     schedule: bool
     queue: bool
     announcements: bool
+    questions: bool = True
     important_popups: bool
     show_details: bool
     quiet_enabled: bool
@@ -544,3 +548,14 @@ def audit_log(request: Request):
     with DB() as db:
         return [{'id': a.id, 'actor': a.actor, 'action': a.action, 'target': a.target,
                  'at': a.at.isoformat() + 'Z'} for a in db.scalars(select(Audit).order_by(Audit.at.desc()).limit(100))]
+
+
+class QuestionDB:
+    def __call__(self):
+        return DB()
+
+    def begin(self):
+        return DB.begin()
+
+
+install_questions(app, QuestionDB(), lambda r: identity(r), lambda *a, **k: auth(*a, **k), guard, notify)

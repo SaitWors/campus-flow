@@ -10,7 +10,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import Request, Response
 from pydantic import Field
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from services.common.core import database, migrate, setup_app, Input, now, digest, fail, internal, manager, service_secret
 from services.auth.models import Base, User, Session, Invitation, Reset, Audit, Gate
@@ -19,10 +19,14 @@ engine, DB = database('auth')
 hasher = PasswordHasher()
 DUMMY = hasher.hash(secrets.token_urlsafe(32))
 
+def add_group_role(conn):
+    if 'group_role' not in {c['name'] for c in inspect(conn).get_columns('users')}:
+        conn.execute(text("ALTER TABLE users ADD COLUMN group_role VARCHAR(20) NOT NULL DEFAULT 'none'"))
+
 @asynccontextmanager
 async def lifespan(app):
     service_secret()
-    migrate(engine, Base)
+    migrate(engine, Base, (add_group_role,))
     with DB.begin() as db:
         if not db.get(Gate, 'admin-guard'):
             db.add(Gate(id='admin-guard'))
@@ -31,7 +35,8 @@ async def lifespan(app):
 app = setup_app('Campus Flow · Identity', engine, lifespan)
 
 def user_json(u):
-    return {'id': u.id, 'email': u.email, 'name': u.name, 'role': u.role, 'status': u.status, 'subgroup': u.subgroup}
+    return {'id': u.id, 'email': u.email, 'name': u.name, 'role': u.role, 'status': u.status, 'subgroup': u.subgroup,
+            'group_role': u.group_role if u.role == 'admin' else u.role if u.role in ('head', 'deputy') else 'none'}
 
 def audit(db, actor, action, target, data=None):
     db.add(Audit(actor=actor, action=action, target=target, data=data or {}))
@@ -198,6 +203,7 @@ def users(request:Request):
         return [user_json(u) for u in db.scalars(select(User).order_by(User.created_at)).all()]
 
 class UpdateUser(Input):
+    group_role:Literal['none','head','deputy'] | None = None
     role:Literal['student','deputy','head','admin']
     status:Literal['active','pending','blocked']
     subgroup:int=Field(ge=1,le=2)
@@ -211,12 +217,17 @@ def update_user(user_id:str,data:UpdateUser,request:Request):
         if not u:fail('not_found',404)
         if actor.role!='admin' and (u.role!='student' or data.role!='student'):
             fail('forbidden',403)
+        if actor.role!='admin' and data.group_role not in (None, 'none'):
+            fail('forbidden',403)
+        if data.role!='admin' and data.group_role not in (None, 'none', data.role):
+            fail('invalid_group_role',422)
         if u.id==actor.id and (data.role!=u.role or data.status!='active'):
             fail('self_demotion',409)
         if u.role=='admin' and u.status=='active' and (data.role!='admin' or data.status!='active'):
             if db.scalar(select(func.count()).select_from(User).where(User.role=='admin',User.status=='active'))<=1:
                 fail('last_admin',409)
         before=user_json(u)
+        u.group_role = (data.group_role if data.group_role is not None else u.group_role) if data.role=='admin' else 'none'
         u.role,u.status,u.subgroup=data.role,data.status,data.subgroup
         if data.status!='active':db.execute(delete(Session).where(Session.user_id==u.id))
         audit(db,actor.name,'user_updated',u.id,{'before':before,'after':user_json(u)})
@@ -306,7 +317,7 @@ def notification_recipients(request:Request):
     internal(request)
     with DB() as db:
         # No names, emails, passwords or session tokens needed for routing.
-        return [{'id':u.id,'role':u.role,'subgroup':u.subgroup}
+        return [{'id':u.id,'role':u.role,'subgroup':u.subgroup,'group_role':user_json(u)['group_role']}
                 for u in db.scalars(select(User).where(User.status=='active'))]
 
 class PushCheck(Input):
@@ -321,4 +332,12 @@ def push_check(data:PushCheck,request:Request):
         user=db.get(User,data.user_id)
         if not session or session.user_id!=data.user_id or session.expires<=now() or not user or user.status!='active':
             return {'active':False}
-        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup}
+        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup,'group_role':user_json(user)['group_role']}
+
+
+@app.get('/internal/question-recipients')
+def question_recipients(request:Request):
+    internal(request)
+    with DB() as db:
+        return [{'id':u.id, 'name':u.name, 'role':u.role, 'group_role':user_json(u)['group_role']}
+                for u in db.scalars(select(User).where(User.status=='active', User.role.in_(('head','deputy','admin'))).order_by(User.name))]

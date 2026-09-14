@@ -1,5 +1,6 @@
 import type {Lang} from './types';
 const ru = {
+  questions:'Личные вопросы',
   notifications:'Уведомления', inboxHint:'Изменения расписания, ваша очередь и объявления группы.',
   empty:'Пока всё спокойно', emptyHint:'Новые события появятся здесь. Ничего не пропустите.',
   markAll:'Прочитать все', markRead:'Прочитано', open:'Открыть', unread:'Непрочитанные', all:'Все',

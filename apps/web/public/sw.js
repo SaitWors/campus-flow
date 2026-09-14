@@ -2,7 +2,7 @@
    authenticated timetable data are stored in a shared offline cache. */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
-const allowedRoutes = new Set(['#schedule', '#queues', '#notifications']);
+const allowedRoutes = new Set(['#schedule', '#queues', '#notifications', '#questions']);
 function ownerStore(write, value) {
   return new Promise(resolve => {
     const open = indexedDB.open('campus-push', 1);

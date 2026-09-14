@@ -13,6 +13,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(80))
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default='student')
+    group_role: Mapped[str] = mapped_column(String(20), default='none', server_default='none')
     status: Mapped[str] = mapped_column(String(20), default='pending')
     subgroup: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

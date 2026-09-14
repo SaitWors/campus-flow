@@ -91,3 +91,33 @@ class PushKey(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     private_key: Mapped[str] = mapped_column(String(500))
     public_key: Mapped[str] = mapped_column(String(100))
+
+
+class Question(Base):
+    __tablename__ = 'questions'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(36), index=True)
+    recipient_id: Mapped[str] = mapped_column(String(36), index=True)
+    owner_name: Mapped[str] = mapped_column(String(80))
+    recipient_name: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(120))
+    request_key: Mapped[str] = mapped_column(String(140), unique=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    owner_seen: Mapped[int] = mapped_column(Integer, default=1)
+    recipient_seen: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+
+
+class QuestionMessage(Base):
+    __tablename__ = 'question_messages'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    question_id: Mapped[str] = mapped_column(String(36), index=True)
+    author_id: Mapped[str] = mapped_column(String(36), index=True)
+    author_name: Mapped[str] = mapped_column(String(80))
+    body: Mapped[str] = mapped_column(String(2000))
+    request_key: Mapped[str] = mapped_column(String(140), unique=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

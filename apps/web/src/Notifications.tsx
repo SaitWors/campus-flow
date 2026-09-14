@@ -7,7 +7,7 @@ import {deviceMeta,disablePush,enablePush,reconnectPush,registration,supportIssu
 import {Badge,Button,Confirm,Dialog,Empty,Field,IconButton,Loading,Notice,useApp} from './ui';
 
 export type NotificationItem={
- id:string;category:'schedule'|'queue'|'announcements';title:string;title_en?:string;body:string;body_en?:string;
+ id:string;category:'schedule'|'queue'|'announcements'|'questions';title:string;title_en?:string;body:string;body_en?:string;
  route:string;important:boolean;read:boolean;created_at:string;expires_at:string;author?:string;
 };
 type InboxData={items:NotificationItem[];unread:number;total:number;popups:NotificationItem[];as_of:string};
@@ -25,7 +25,7 @@ function nError(lang:'ru'|'en',e:unknown){
 function content(item:NotificationItem,lang:'ru'|'en',field:'title'|'body'){
  return lang==='en'?(item[field+'_en' as 'title_en'|'body_en']||item[field]):item[field];
 }
-function routeTo(value:string){location.hash=['#schedule','#queues','#notifications'].includes(value)?value:'#notifications';}
+function routeTo(value:string){location.hash=['#schedule','#queues','#notifications','#questions'].includes(value)?value:'#notifications';}
 
 export function NotificationProvider({children}:{children:ReactNode}){
  const {user,lang,refresh}=useApp();const t=useN();
@@ -105,7 +105,7 @@ export function NotificationInbox({compact=false,onNavigate}:{compact?:boolean;o
  </section>;
 }
 
-type Preferences={revision:number;schedule:boolean;queue:boolean;announcements:boolean;important_popups:boolean;show_details:boolean;quiet_enabled:boolean;quiet_start:string;quiet_end:string;timezone:string;language:'ru'|'en'};
+type Preferences={revision:number;schedule:boolean;queue:boolean;announcements:boolean;questions:boolean;important_popups:boolean;show_details:boolean;quiet_enabled:boolean;quiet_start:string;quiet_end:string;timezone:string;language:'ru'|'en'};
 type Device={id:string;label:string;updated_at:string};
 export function NotificationSettings(){
  const t=useN(),{user,lang,notify}=useApp(),{reload}=useInbox();
@@ -129,7 +129,7 @@ export function NotificationSettings(){
  <div className="button-row">{connected?<Button variant="secondary" busy={busy} onClick={()=>void run(async()=>{await disablePush(user.id);setConnected(false);await refreshDevices();})}>{t('disable')}</Button>:<Button disabled={Boolean(issue)||!config.enabled||!label.trim()} busy={busy} onClick={()=>void run(async()=>{await enablePush(config,user.id,label);setConnected(true);await refreshDevices();})}><BellRing size={17}/>{t('enable')}</Button>}
  <Button variant="secondary" busy={busy} disabled={!connected} onClick={()=>void run(async()=>{await api('/api/notifications/test','POST',{});reload();},t('testSent'))}>{t('test')}</Button></div></div>
  <form onSubmit={e=>{e.preventDefault();void run(async()=>{setPref(await api<Preferences>('/api/notifications/preferences','PUT',pref));reload();},t('saved'));}}>
- <h3>{t('categories')}</h3>{bool('schedule','schedule')}{bool('queue','queue')}{bool('announcements','announcements')}
+ <h3>{t('categories')}</h3>{bool('schedule','schedule')}{bool('queue','queue')}{bool('announcements','announcements')}{bool('questions','questions')}
  <div className="notification-setting-section">{bool('important_popups','popups')}{bool('show_details','details')}<p className="field-hint">{t('detailsHint')}</p></div>
  <div className="notification-setting-section">{bool('quiet_enabled','quiet')}<p className="field-hint">{t('quietHint')}</p>{pref.quiet_enabled&&<div className="form-grid"><Field label={t('from')}><input type="time" required value={pref.quiet_start} onChange={e=>setPref({...pref,quiet_start:e.target.value})}/></Field><Field label={t('until')}><input type="time" required value={pref.quiet_end} onChange={e=>setPref({...pref,quiet_end:e.target.value})}/></Field></div>}</div>
  <div className="form-grid"><Field label={t('timezone')}><select value={pref.timezone} onChange={e=>setPref({...pref,timezone:e.target.value})}>{Array.from(new Set([pref.timezone,'Europe/Moscow','Europe/Kaliningrad','Europe/Samara','Asia/Yekaterinburg','UTC'])).map(z=><option key={z}>{z}</option>)}</select></Field><Field label={t('language')}><select value={pref.language} onChange={e=>setPref({...pref,language:e.target.value as 'ru'|'en'})}><option value="ru">Русский</option><option value="en">English</option></select></Field></div>

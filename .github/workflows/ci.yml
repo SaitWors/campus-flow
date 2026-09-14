@@ -38,6 +38,8 @@ jobs:
         run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
       - name: Notification integration workflow
         run: python -m scripts.verify_notifications
+      - name: Guest, dual roles and private question workflow
+        run: python -m scripts.verify_community
       - name: Real offline Russian to English translation
         run: python -m scripts.verify_translation
       - name: Verify API schemas and private route boundary
@@ -93,6 +95,7 @@ jobs:
       - run: pip install httpx==0.28.1
       - run: python scripts/smoke.py --base-url http://localhost:8080 --allow-empty-instance
       - run: python -m scripts.verify_notifications
+      - run: python -m scripts.verify_community
       - name: Lightweight translation fallback
         run: |
           python - <<'PY'

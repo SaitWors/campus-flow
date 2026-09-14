@@ -44,3 +44,6 @@ def test_real_http_workflow(cluster):
     assert len(run(urls,setup_key))==6
     from scripts.verify_notifications import run as notifications
     notifications(urls)
+
+    from scripts.verify_community import run as community
+    community(urls)
