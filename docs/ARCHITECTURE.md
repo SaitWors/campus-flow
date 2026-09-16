@@ -1,5 +1,7 @@
 # Architecture
 
+PR3 adds a standalone `compose.production.yaml` for small hosts: the four API/database ownership boundaries remain, while four databases and distinct non-superuser roles share one PostgreSQL instance. Application images use verified commit tags; translation is disabled in this profile. See [production operations](DEPLOY_TIMEWEB40_RU.md). The original development topology below remains supported.
+
 Version 1.0.0 targets one academic group with two subgroups. Roles and registration belong to that installation. Multi-university tenancy and arbitrary numbers of subgroups are not implemented.
 
 ```mermaid
