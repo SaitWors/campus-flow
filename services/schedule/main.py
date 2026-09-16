@@ -1,4 +1,7 @@
 import os
+import hashlib
+import hmac
+import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -10,8 +13,9 @@ from fastapi.responses import Response
 from pydantic import Field, model_validator
 from sqlalchemy import select, or_, func
 from services.common.core import database, migrate, setup_app, Input, now, fail, identity, internal, manager, service_secret
-from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event, TitleTranslation
+from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event, TitleTranslation, Subject, TimePresets
 from services.schedule.translation import TitleTranslator, with_translation
+from services.schedule.catalog import migrate_catalog, remember_subject, PresetsInput
 
 engine, DB=database('schedule')
 translator=TitleTranslator(DB)
@@ -19,7 +23,7 @@ DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester
 
 @asynccontextmanager
 async def lifespan(app):
-    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),))
+    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),migrate_catalog))
     with DB.begin() as db:
         if not db.get(Settings,1):db.add(Settings(id=1,data=DEFAULT_SETTINGS))
     translator.start()
@@ -96,6 +100,7 @@ class RuleInput(LessonInput):
     weekday:int=Field(ge=0,le=6)
     parity:Literal['all','odd','even']='all'
     revision:int=Field(default=0,ge=0)
+    preview_token:str=Field(default='',max_length=64)
 
 class ExceptionInput(LessonInput):
     date:date
@@ -103,7 +108,7 @@ class ExceptionInput(LessonInput):
     revision:int=Field(ge=1)
 
 
-def generate_rule(db,rule,config):
+def generate_rule(db,rule,config,future_only=False):
     start=date.fromisoformat(config['semester_start']);end=date.fromisoformat(config['semester_end'])
     today=datetime.now(ZoneInfo(config['timezone'])).date()
     wanted=set();d=start
@@ -114,10 +119,10 @@ def generate_rule(db,rule,config):
             item=db.get(Occurrence,oid)
             content={k:v for k,v in rule.data.items() if k not in ('weekday','parity')}
             content.update(status='confirmed',demo=bool(rule.data.get('demo',False)))
-            if not item:
+            if not item and not (future_only and d<today):
                 item=Occurrence(id=oid,rule_id=rule.id,original_date=d.isoformat(),date=d.isoformat(),data=content)
                 db.add(item);db.flush();event(db,'occurrence.created',item)
-            elif not item.overridden and d>=today and item.data!=content:
+            elif item and not item.overridden and d>=today and item.data!=content:
                 item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item)
         d+=timedelta(days=1)
     db.flush()
@@ -169,8 +174,8 @@ def add_rule(data:RuleInput,request:Request):
     u=identity(request);manager(u)
     with DB.begin() as db:
         config=settings(db,True).data
-        r=Rule(data=data.model_dump(exclude={'revision'}));db.add(r);db.flush()
-        generate_rule(db,r,config);conflicts(db);audit(db,u,'rule_created',r.id,r.data)
+        r=Rule(data=data.model_dump(exclude={'revision','preview_token'}));db.add(r);db.flush()
+        generate_rule(db,r,config);conflicts(db);remember_subject(db,r.data);audit(db,u,'rule_created',r.id,r.data)
         return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
 
 @app.put('/api/schedule/rules/{rule_id}')
@@ -180,8 +185,10 @@ def edit_rule(rule_id:str,data:RuleInput,request:Request):
         config=settings(db,True).data;r=db.get(Rule,rule_id)
         if not r or r.archived:fail('not_found',404)
         if r.revision!=data.revision:fail('revision_conflict',409)
-        before=r.data;r.data=data.model_dump(exclude={'revision'});r.revision+=1
-        generate_rule(db,r,config);conflicts(db);audit(db,u,'rule_updated',r.id,{'before':before,'after':r.data})
+        if not data.preview_token:fail('preview_required',409)
+        if not hmac.compare_digest(data.preview_token,rule_preview_token(db,r,data,config)):fail('preview_stale',409)
+        before=r.data;r.data={**data.model_dump(exclude={'revision','preview_token'}),**({'demo':r.data['demo']} if 'demo' in r.data else {})};r.revision+=1
+        generate_rule(db,r,config,future_only=True);conflicts(db);remember_subject(db,r.data);audit(db,u,'rule_updated',r.id,{'before':before,'after':r.data})
         return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
 
 @app.delete('/api/schedule/rules/{rule_id}')
@@ -231,6 +238,7 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         item.data={**data.model_dump(mode='json',exclude={'revision','date'}),'demo':item.data.get('demo',False)}
         item.date=data.date.isoformat();item.overridden=True;item.revision+=1;item.updated_at=now()
         db.flush();conflicts(db)
+        remember_subject(db,item.data)
         event(db,'occurrence.cancelled' if data.status=='cancelled' else 'occurrence.updated',item)
         audit(db,u,'occurrence_updated',oid,{'before':before,'after':row(item,config,db)})
         return row(item,config,db)
@@ -350,3 +358,97 @@ def guest_occurrences(start:date, end:date, subgroup:int=Query(default=0,ge=0,le
         return [{k:v for k,v in row(item,config,db).items() if k in PUBLIC_LESSON_FIELDS}
                 for item in items if not item.data.get('removed_from_template') and
                 (not subgroup or item.data['subgroup'] in (0,subgroup))]
+
+@app.get('/api/schedule/subjects')
+def subjects(request:Request):
+    manager(identity(request))
+    with DB() as db:
+        return [with_translation({'title':s.title,'title_en':s.title_en},db)
+                for s in db.scalars(select(Subject).order_by(Subject.title))]
+
+
+@app.get('/api/schedule/time-presets')
+def time_presets(request:Request):
+    manager(identity(request))
+    with DB() as db:
+        p=db.get(TimePresets,1)
+        return {'items':p.data,'revision':p.revision}
+
+
+@app.put('/api/schedule/time-presets')
+def update_time_presets(data:PresetsInput,request:Request):
+    u=identity(request);manager(u)
+    with DB.begin() as db:
+        p=db.scalar(select(TimePresets).where(TimePresets.id==1).with_for_update())
+        if p.revision!=data.revision:fail('revision_conflict',409)
+        p.data=[s.model_dump() for s in sorted(data.items,key=lambda s:s.start)]
+        p.revision+=1
+        audit(db,u,'time_presets_updated','presets',{'items':p.data})
+        return {'items':p.data,'revision':p.revision}
+
+
+def rule_preview_token(db,rule,data,config):
+    state={
+        'rule':rule.id, 'request':data.model_dump(exclude={'preview_token'}),
+        'settings':settings(db).revision,
+        'date':datetime.now(ZoneInfo(config['timezone'])).date().isoformat(),
+        'rules':[(r.id,r.revision,r.archived) for r in db.scalars(select(Rule).order_by(Rule.id))],
+        'occurrences':[(i.id,i.revision) for i in db.scalars(select(Occurrence).order_by(Occurrence.id))],
+    }
+    return hmac.new(service_secret().encode(),json.dumps(state,sort_keys=True).encode(),hashlib.sha256).hexdigest()
+
+
+def preview_item(item):
+    return {'id':item.id,'date':item.date,**item.data}
+
+
+@app.post('/api/schedule/rules/{rule_id}/preview')
+def preview_rule(rule_id:str,data:RuleInput,request:Request):
+    manager(identity(request))
+    # Simulate the actual generator under the same lock, then roll everything
+    # back: neither occurrences, events, translations nor audits are committed.
+    with DB() as db:
+        config=settings(db,True).data
+        rule=db.get(Rule,rule_id)
+        if not rule or rule.archived:fail('not_found',404)
+        if rule.revision!=data.revision:fail('revision_conflict',409)
+        token=rule_preview_token(db,rule,data,config)
+        items=db.scalars(select(Occurrence).where(Occurrence.rule_id==rule_id)).all()
+        before={i.id:preview_item(i) for i in items}
+        exceptions=sum(i.overridden for i in items)
+        today=datetime.now(ZoneInfo(config['timezone'])).date().isoformat()
+        past=sum(i.date<today for i in items)
+        rule.data={**data.model_dump(exclude={'revision','preview_token'}),**({'demo':rule.data['demo']} if 'demo' in rule.data else {})}
+        generate_rule(db,rule,config,future_only=True)
+        conflicts(db)
+        changes=[]
+        for item in db.scalars(select(Occurrence).where(Occurrence.rule_id==rule_id).order_by(Occurrence.date,Occurrence.id)):
+            after=preview_item(item)
+            if before.get(item.id)!=after:
+                changes.append({'before':before.get(item.id),'after':after})
+        return {'preview_token':token,'changes':changes,'preserved_exceptions':exceptions,'past_lessons':past}
+
+
+@app.get('/api/schedule/guest/calendar.ics')
+def subscribe_calendar(lang:Literal['ru','en']='ru',subgroup:int=Query(default=0,ge=0,le=2)):
+    """Stable subscription URL. Only fields already present in the guest API."""
+    with DB() as db:
+        config=settings(db).data
+        lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Flow//Timetable//EN',
+               'CALSCALE:GREGORIAN','METHOD:PUBLISH','REFRESH-INTERVAL;VALUE=DURATION:PT1H',
+               'X-PUBLISHED-TTL:PT1H',f'X-WR-CALNAME:{ics_escape(config["group"])}']
+        for occurrence in db.scalars(select(Occurrence).order_by(Occurrence.date,Occurrence.id)):
+            item=row(occurrence,config,db)
+            # Tombstones remain in the feed so moved/removed lessons disappear
+            # from calendars already subscribed to a subgroup.
+            cancelled=item['status']=='cancelled' or item.get('removed_from_template') or (subgroup and item['subgroup'] not in (0,subgroup))
+            title=(item['title_en'] or item.get('title_en_auto') or item['title']) if lang=='en' else item['title']
+            def utc(key):return datetime.fromisoformat(item[key]).astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            stamp=occurrence.updated_at.strftime('%Y%m%dT%H%M%SZ')
+            lines+=['BEGIN:VEVENT',f'UID:{item["id"]}@campus-flow',f'SEQUENCE:{occurrence.revision}',
+                    f'DTSTAMP:{stamp}',f'LAST-MODIFIED:{stamp}',f'DTSTART:{utc("starts_at")}',
+                    f'DTEND:{utc("ends_at")}',f'SUMMARY:{ics_escape(title)}',
+                    f'LOCATION:{ics_escape(item["room"])}',
+                    f'STATUS:{"CANCELLED" if cancelled else "TENTATIVE" if item["status"]=="pending" else "CONFIRMED"}','END:VEVENT']
+        lines+=['END:VCALENDAR']
+        return Response('\r\n'.join(fold_ics(s) for s in lines)+'\r\n',media_type='text/calendar')

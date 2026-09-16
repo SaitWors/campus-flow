@@ -10,3 +10,7 @@ export type Entry = {id:string;user_id:string;name:string;ticket:number;task:str
 export type QueueSummary = {id:string;occurrence_id:string;state:string;revision:number;capacity:number;active_count:number;mine:boolean};
 export type QueueDetail = {id:string;occurrence_id:string;state:string;capacity:number;minutes_per_student:number;opens_before_hours:number;opens_at:string;revision:number;lesson_revision:number;blocked_reason:string;closed_reason:string;entries:Entry[];history:Entry[];my_position:number|null;my_entry:Entry|null;lesson:Lesson;server_time:string};
 export type Audit = {id:string;actor:string;action:string;target:string;at:string;data:Record<string,unknown>};
+export type Subject = {title:string;title_en:string;title_en_auto?:string};
+export type TimeSlot = {label:string;start:string;end:string};
+export type Presets = {items:TimeSlot[];revision:number};
+export type RulePreview = {preview_token:string;changes:{before:(Partial<Lesson>&{id:string})|null;after:Partial<Lesson>&{id:string}}[];preserved_exceptions:number;past_lessons:number};

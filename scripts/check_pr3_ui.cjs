@@ -1,0 +1,104 @@
+// Run only on a disposable instance initialized by smoke.py and verify_pr3.py.
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const crypto=require('node:crypto');
+const base=process.env.CAMPUS_BASE_URL||'http://localhost:8080';
+function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5,'0');const key=Buffer.from(bits.match(/.{8}/g).map(v=>parseInt(v,2)));const time=Buffer.alloc(8);time.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const h=crypto.createHmac('sha1',key).update(time).digest();return String((h.readUInt32BE(h[19]&15)&0x7fffffff)%1000000).padStart(6,'0');}
+(async()=>{
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
+ const errors=[];await fs.mkdir('test-results',{recursive:true});
+ try{
+  const admin=await browser.newContext({baseURL:base,viewport:{width:1360,height:940}});
+  admin.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
+  await admin.addInitScript(()=>{try{if(!localStorage.getItem('cf-language'))localStorage.setItem('cf-language','en');}catch{}});
+  assert((await admin.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}})).ok());
+  const page=await admin.newPage();page.setDefaultTimeout(15000);
+  await page.goto('/#admin');await page.getByRole('tab',{name:'Subjects and class times',exact:true}).click();
+  await page.getByRole('heading',{name:'Class times',exact:true}).waitFor();
+  assert.equal(await page.locator('.preset-row').count(),5);
+  assert.equal(await page.getByLabel('Starts',{exact:true}).first().inputValue(),'09:30');
+  for(const width of [360,390,768,1360]){await page.setViewportSize({width,height:940});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'catalogue overflow '+width);}
+  await page.screenshot({path:'test-results/pr3-catalog-desktop.png',fullPage:true});
+  await page.getByRole('tab',{name:'Class templates',exact:true}).click();
+  await page.getByRole('button',{name:'Add class',exact:true}).first().click();
+  let dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Choose a saved subject',{exact:true}).selectOption('Математический анализ PR3');
+  assert.equal(await dialog.getByLabel('Subject',{exact:true}).inputValue(),'Математический анализ PR3');
+  assert.equal(await dialog.getByLabel('English subject name',{exact:true}).inputValue(),'PR3 Mathematical analysis');
+  await dialog.getByLabel('Class time slot',{exact:true}).selectOption('3');
+  assert.equal(await dialog.getByLabel('Starts',{exact:true}).inputValue(),'15:10');
+  assert.equal(await dialog.getByLabel('Ends',{exact:true}).inputValue(),'16:40');
+  await dialog.getByLabel('Ends',{exact:true}).fill('16:35');
+  assert.equal(await dialog.getByLabel('Class time slot',{exact:true}).inputValue(),'');
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await dialog.evaluate(e=>e.scrollWidth>e.clientWidth),false,'lesson form overflow');
+  await page.screenshot({path:'test-results/pr3-lesson-mobile.png'});
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  // Editing an existing rule requires preview and then explicit application.
+  await page.setViewportSize({width:1360,height:940});
+  await page.locator('.template-card').first().getByRole('button',{name:'Edit',exact:true}).click();
+  dialog=page.getByRole('dialog');const originalRoom=await dialog.getByLabel('Room / location',{exact:true}).inputValue();
+  await dialog.getByLabel('Room / location',{exact:true}).fill('Browser preview room');
+  await dialog.getByRole('button',{name:'Preview changes',exact:true}).click();
+  await dialog.getByRole('button',{name:'Apply changes',exact:true}).waitFor();
+  await page.screenshot({path:'test-results/pr3-rule-preview.png'});
+  await dialog.getByLabel('Room / location',{exact:true}).fill(originalRoom);
+  await dialog.getByRole('button',{name:'Preview changes',exact:true}).waitFor();
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.goto('/#preferences');await page.getByRole('heading',{name:'Calendar subscription',exact:true}).waitFor();
+  const subscription=await page.getByLabel('Subscription URL',{exact:true}).inputValue();assert(subscription.includes('/api/schedule/guest/calendar.ics'));
+  await page.getByRole('checkbox',{name:'Reduce animations',exact:true}).check();
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.reducedMotion),'true');
+  await page.reload();await page.getByRole('heading',{name:'Calendar subscription',exact:true}).waitFor();
+  assert.equal(await page.getByRole('checkbox',{name:'Reduce animations',exact:true}).isChecked(),true);
+  for(const width of [360,390,768,1360]){await page.setViewportSize({width,height:940});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'settings overflow '+width);}
+  await page.screenshot({path:'test-results/pr3-settings.png',fullPage:true});
+  await page.getByRole('button',{name:'Save offline copy',exact:true}).click();
+  await page.getByRole('link',{name:'Open saved copy',exact:true}).waitFor();
+  const snapshot=await page.evaluate(async()=>{const c=await caches.open('campus-public-offline-v1');return (await c.match('/offline-data.json')).json();});
+  assert(snapshot.lessons.length>0);
+  const forbidden=['teacher','note','meeting_url','queue_enabled','rule_id','revision'];
+  assert(snapshot.lessons.every(l=>forbidden.every(k=>!(k in l))));
+  const keys=await page.evaluate(async()=>{const c=await caches.open('campus-public-offline-v1');return (await c.keys()).map(r=>new URL(r.url).pathname);});
+  assert.deepEqual(keys.sort(),['/offline-data.json','/offline.css','/offline.html','/offline.js'].sort());
+  await admin.setOffline(true);await page.goto('/offline.html');await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();
+  assert(await page.locator('article').count()>0);await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'test-results/pr3-offline-mobile.png',fullPage:true});
+  await page.goto('/');await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Delete copy',exact:true}).click();await page.getByText('No saved copy.',{exact:false}).waitFor();
+  await admin.setOffline(false);
+  await page.goto('/#admin');
+  await page.evaluate(()=>{localStorage.setItem('cf-language','ru');localStorage.setItem('cf-theme','dark');});
+  await page.reload();await page.getByRole('tab',{name:'Предметы и время пар',exact:true}).click();
+  await page.getByRole('heading',{name:'Время пар',exact:true}).waitFor();
+  await page.setViewportSize({width:1360,height:940});await page.screenshot({path:'test-results/pr3-catalog-ru-dark.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Russian catalogue overflow');
+  await page.screenshot({path:'test-results/pr3-catalog-ru-mobile.png',fullPage:true});
+  // Full browser enrollment and subsequent recovery-code login.
+  const member=await browser.newContext({baseURL:base,viewport:{width:390,height:844}});
+  member.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
+  await member.addInitScript(()=>{try{localStorage.setItem('cf-language','en');}catch{}});
+  assert((await member.request.post('/api/auth/login',{data:{email:'pr3-other@example.test',password:'Integration-test-password-2026'}})).ok());
+  const m=await member.newPage();m.setDefaultTimeout(15000);await m.goto('/#preferences');
+  await m.getByRole('button',{name:'Set up two-factor authentication',exact:true}).click();
+  dialog=m.getByRole('dialog');await dialog.getByLabel('Current password',{exact:true}).fill('Integration-test-password-2026');
+  await dialog.getByRole('button',{name:'Set up two-factor authentication',exact:true}).click();
+  const secret=await dialog.getByLabel('Manual setup key',{exact:true}).inputValue();
+  await dialog.getByLabel('Authenticator or recovery code',{exact:true}).fill(otp(secret));
+  await dialog.getByRole('button',{name:'Confirm and enable',exact:true}).click();
+  const codes=(await dialog.getByLabel('Recovery codes',{exact:true}).inputValue()).split('\n');
+  assert.equal(codes.length,10);await dialog.getByRole('button',{name:'I saved the codes',exact:true}).click();
+  await m.getByRole('button',{name:'Sign out',exact:true}).click();
+  await m.getByLabel('Email',{exact:true}).fill('pr3-other@example.test');await m.getByLabel('Password',{exact:true}).fill('Integration-test-password-2026');
+  await m.getByRole('button',{name:'Sign in',exact:true}).click();await m.getByRole('heading',{name:'Verify sign-in',exact:true}).waitFor();
+  await m.screenshot({path:'test-results/pr3-mfa-login-mobile.png'});
+  await m.getByLabel('Authenticator or recovery code',{exact:true}).fill(codes[0]);await m.getByRole('button',{name:'Sign in',exact:true}).click();
+  await m.getByRole('heading',{name:'Schedule',exact:true}).waitFor();
+  await m.goto('/#preferences');await m.getByRole('button',{name:'Disable two-factor authentication',exact:true}).click();dialog=m.getByRole('dialog');
+  await dialog.getByLabel('Current password',{exact:true}).fill('Integration-test-password-2026');await dialog.getByLabel('Authenticator or recovery code',{exact:true}).fill(codes[1]);
+  await dialog.getByRole('button',{name:'Disable two-factor authentication',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  assert.deepEqual(errors,[]);
+  console.log('PASS: responsive catalogue, reusable subject/translation, editable presets, preview invalidation, reduced motion, public offline reload/delete, browser MFA enrollment and sign-in');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

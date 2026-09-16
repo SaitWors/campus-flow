@@ -24,6 +24,25 @@ class Session(Base):
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     csrf: Mapped[str] = mapped_column(String(80))
     expires: Mapped[datetime] = mapped_column(DateTime, index=True)
+    public_id: Mapped[str] = mapped_column(String(36), default=uid, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    device: Mapped[str] = mapped_column(String(200), default='')
+
+class TwoFactor(Base):
+    __tablename__ = 'two_factor'
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    secret: Mapped[str] = mapped_column(String(256), default='')
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    pending_until: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_step: Mapped[int] = mapped_column(Integer, default=-1)
+    recovery_hashes: Mapped[list] = mapped_column(JSON, default=list)
+
+class LoginChallenge(Base):
+    __tablename__ = 'login_challenges'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    expires: Mapped[datetime] = mapped_column(DateTime)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 class Invitation(Base):
     __tablename__ = 'invitations'

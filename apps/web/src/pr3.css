@@ -1,0 +1,21 @@
+.form-fieldset{border:0;padding:0;margin:0;min-width:0}
+.catalog-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px;align-items:start}
+.preset-row{display:grid;grid-template-columns:minmax(64px,1fr) minmax(96px,1.3fr) minmax(96px,1.3fr) auto;gap:10px;align-items:center}
+.preset-row input{min-width:0;width:100%}.preset-row .field{min-width:0}.preset-row .icon-button{margin-top:12px}
+.subject-list article{display:flex;flex-direction:column;padding:16px 0;border-bottom:1px solid var(--line);gap:5px}.subject-list small{color:var(--muted)}
+.change-preview{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:18px;margin-top:18px}
+.preview-scroll{max-height:300px;overflow:auto}.preview-scroll article{padding:12px 0;border-top:1px solid var(--line)}.preview-scroll p{margin:5px 0;overflow-wrap:anywhere}
+.session-list article{display:flex;gap:16px;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--line);margin-bottom:16px}.session-list small{display:block;color:var(--muted);margin:6px 0}.session-list details p{overflow-wrap:anywhere;font-size:12px}.session-list article>div{min-width:0}.session-list .button{align-self:start}
+.recovery-codes{font-family:monospace;line-height:1.8;text-align:center;resize:none}.secret-key{font-family:monospace;letter-spacing:.03em}.subscription-url{overflow-wrap:anywhere}.offline-actions{margin-top:16px}
+@media(max-width:850px){.catalog-grid{grid-template-columns:1fr}}
+@media(max-width:450px){.preset-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px}.preset-row>.field:first-child{grid-column:1/-1;margin-bottom:0}.preset-row .icon-button{margin-top:10px}.session-list article{flex-wrap:wrap}}
+:root{view-transition-name:none}.main-content{view-transition-name:campus-page}
+::view-transition-old(campus-page){animation:campus-fade-out 120ms ease-out both}
+::view-transition-new(campus-page){animation:campus-page-in 180ms ease-out both}
+@keyframes campus-fade-out{to{opacity:0}}
+@keyframes campus-page-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.dialog[open]{animation:campus-page-in 160ms ease-out}.lesson-card{transition:transform 160ms ease-out,box-shadow 160ms ease-out,border-color 160ms ease-out}
+@media(hover:hover){.lesson-card:hover{transform:translateY(-2px)}}
+:root[data-reduced-motion=true] *, :root[data-reduced-motion=true] *::before, :root[data-reduced-motion=true] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+:root[data-reduced-motion=true] .lesson-card:hover{transform:none}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.lesson-card:hover{transform:none}::view-transition-old(campus-page),::view-transition-new(campus-page){animation:none!important}}
