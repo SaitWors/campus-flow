@@ -1,0 +1,64 @@
+name: Publish verified production images
+on:
+  workflow_run:
+    workflows: [Campus Flow verification]
+    branches: [main]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  publish:
+    # Never execute a PR's code with package write permission.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [api, web]
+    env:
+      COMMIT: ${{ github.event.workflow_run.head_sha }}
+      IMAGE: ghcr.io/saitwors/campus-flow-${{ matrix.component }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve previously published SHA tags
+        id: release
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$COMMIT" >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        if: steps.release.outputs.exists != 'true'
+        id: build
+        with:
+          context: .
+          file: infra/${{ matrix.component }}.Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.COMMIT }}
+          build-args: |
+            VCS_REF=${{ env.COMMIT }}
+            BUILD_DATE=${{ steps.release.outputs.created }}
+          provenance: mode=max
+          sbom: true
+      - name: Published reference
+        run: |
+          printf '%s\n' "$IMAGE:$COMMIT" >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools inspect "$IMAGE:$COMMIT" >> "$GITHUB_STEP_SUMMARY"

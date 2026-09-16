@@ -36,6 +36,7 @@ x-environment: &environment
   DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-10}
   DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
   DB_POOL_PRE_PING: ${DB_POOL_PRE_PING:-true}
+  REQUEST_LOGGING: 'true'
 
 services:
   postgres:
