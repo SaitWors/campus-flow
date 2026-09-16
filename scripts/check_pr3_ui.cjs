@@ -26,6 +26,10 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   await dialog.getByLabel('Choose a saved subject',{exact:true}).selectOption('Математический анализ PR3');
   assert.equal(await dialog.getByLabel('Subject',{exact:true}).inputValue(),'Математический анализ PR3');
   assert.equal(await dialog.getByLabel('English subject name',{exact:true}).inputValue(),'PR3 Mathematical analysis');
+  await dialog.getByLabel('English subject name',{exact:true}).fill('Manual wording');
+  await dialog.getByLabel('Subject',{exact:true}).fill('Новое название');
+  assert.equal(await dialog.getByLabel('English subject name',{exact:true}).inputValue(),'Manual wording');
+  await dialog.getByLabel('Choose a saved subject',{exact:true}).selectOption('Математический анализ PR3');
   await dialog.getByLabel('Class time slot',{exact:true}).selectOption('3');
   assert.equal(await dialog.getByLabel('Starts',{exact:true}).inputValue(),'15:10');
   assert.equal(await dialog.getByLabel('Ends',{exact:true}).inputValue(),'16:40');

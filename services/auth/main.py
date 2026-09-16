@@ -273,7 +273,7 @@ def password(data:Password,request:Request,response:Response):
     rate(request,'password-change',20)
     with DB.begin() as db:
         actor=current(request,db)
-        u=db.scalar(select(User).where(User.id==actor.id).with_for_update())
+        u=db.scalar(select(User).where(User.id==actor.id).with_for_update().execution_options(populate_existing=True))
         try:hasher.verify(u.password_hash,data.current_password)
         except VerificationError:fail('invalid_credentials',401)
         factor=db.scalar(select(TwoFactor).where(TwoFactor.user_id==u.id).with_for_update())
