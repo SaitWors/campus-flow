@@ -52,3 +52,15 @@ class TitleTranslation(Base):
     title:Mapped[str]=mapped_column(String(120),primary_key=True)
     translated:Mapped[str]=mapped_column(String(120),default='')
     updated_at:Mapped[datetime]=mapped_column(DateTime,default=now)
+
+class Subject(Base):
+    __tablename__='subjects'
+    key:Mapped[str]=mapped_column(String(240),primary_key=True)
+    title:Mapped[str]=mapped_column(String(120))
+    title_en:Mapped[str]=mapped_column(String(120),default='')
+
+class TimePresets(Base):
+    __tablename__='time_presets'
+    id:Mapped[int]=mapped_column(Integer,primary_key=True,default=1)
+    data:Mapped[list]=mapped_column(JSON)
+    revision:Mapped[int]=mapped_column(Integer,default=1)

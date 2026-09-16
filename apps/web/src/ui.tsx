@@ -1,4 +1,4 @@
-import {createContext,useContext,useEffect,useId,useRef,useState,type ReactNode} from 'react';
+import {Children,cloneElement,isValidElement,type ReactElement,createContext,useContext,useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {AlertCircle,CheckCircle2,LoaderCircle,X,ArrowRight,Inbox} from 'lucide-react';
 import type {Lang,Theme,User,Settings} from './types';
 import {errorText,tx} from './i18n';
@@ -8,7 +8,7 @@ export function useApp(){return useContext(AppContext);}
 export function useT(){const {lang}=useApp();return (key:string)=>tx(lang,key);}
 export function IconButton({label,children,...props}:{label:string;children:ReactNode}&React.ButtonHTMLAttributes<HTMLButtonElement>){return <button type="button" className="icon-button" aria-label={label} title={label} {...props}>{children}</button>;}
 export function Button({children,variant='primary',busy=false,...props}:{children:ReactNode;variant?:'primary'|'secondary'|'danger'|'ghost';busy?:boolean}&React.ButtonHTMLAttributes<HTMLButtonElement>){return <button type="button" {...props} disabled={props.disabled||busy} className={`button ${variant} ${props.className||''}`}>{busy?<LoaderCircle size={17} className="spin"/>:null}{children}</button>;}
-export function Field({label,children,hint}:{label:string;children:ReactNode;hint?:string}){return <label className="field"><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>;}
+export function Field({label,children,hint}:{label:string;children:ReactNode;hint?:string}){const hintId=useId();return <label className="field"><span>{label}</span>{Children.map(children,child=>{if(!isValidElement(child)||typeof child.type!=='string'||!['input','select','textarea'].includes(child.type))return child;const control=child as ReactElement<Record<string,unknown>>;return cloneElement(control,{'aria-label':control.props['aria-label']||label,...(hint?{'aria-describedby':[control.props['aria-describedby'],hintId].filter(Boolean).join(' ')}:{})});})}{hint&&<small id={hintId}>{hint}</small>}</label>;}
 export function Badge({children,tone='neutral'}:{children:ReactNode;tone?:string}){return <span className={`badge ${tone}`}>{children}</span>;}
 export function Empty({title,description,children}:{title:string;description?:string;children?:ReactNode}){return <div className="empty"><div className="empty-icon"><Inbox size={28}/></div><h3>{title}</h3>{description&&<p>{description}</p>}{children}</div>;}
 export function Notice({children,error=false}:{children:ReactNode;error?:boolean}){return <div className={`notice ${error?'error':''}`} role={error?'alert':'status'}><AlertCircle size={18}/><span>{children}</span></div>;}

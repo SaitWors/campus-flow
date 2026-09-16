@@ -6,17 +6,18 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Literal
 
-from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import Request, Response
 from pydantic import Field
 from sqlalchemy import select, delete, func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from services.common.core import database, migrate, setup_app, Input, now, digest, fail, internal, manager, service_secret
-from services.auth.models import Base, User, Session, Invitation, Reset, Audit, Gate
+from services.auth.models import Base, User, Session, Invitation, Reset, Audit, Gate, TwoFactor, LoginChallenge
+from services.auth.security import migrate_security, make_challenge, consume_code, install
+from services.auth.passwords import BoundedPasswordHasher
 
 engine, DB = database('auth')
-hasher = PasswordHasher()
+hasher = BoundedPasswordHasher()
 DUMMY = hasher.hash(secrets.token_urlsafe(32))
 
 def add_group_role(conn):
@@ -26,7 +27,7 @@ def add_group_role(conn):
 @asynccontextmanager
 async def lifespan(app):
     service_secret()
-    migrate(engine, Base, (add_group_role,))
+    migrate(engine, Base, (add_group_role,migrate_security))
     with DB.begin() as db:
         if not db.get(Gate, 'admin-guard'):
             db.add(Gate(id='admin-guard'))
@@ -80,14 +81,14 @@ def check_session(db, token, csrf='', mutation=False):
 def current(request, db):
     return check_session(db, request.cookies.get('cf_session',''), request.headers.get('X-CSRF-Token',''), request.method not in ('GET','HEAD','OPTIONS'))[0]
 
-def login_response(db, u, response):
+def login_response(db, u, response, request):
     token, csrf = secrets.token_urlsafe(40), secrets.token_urlsafe(32)
     db.execute(delete(Session).where(Session.expires < now()))
     # Bound sessions per account while preserving parallel devices.
     existing = db.scalars(select(Session).where(Session.user_id == u.id).order_by(Session.expires.desc())).all()
     for s in existing[4:]:
         db.delete(s)
-    db.add(Session(token_hash=digest(token), user_id=u.id, csrf=csrf, expires=now()+timedelta(days=7)))
+    db.add(Session(token_hash=digest(token), user_id=u.id, csrf=csrf, expires=now()+timedelta(days=7),device=request.headers.get('user-agent','')[:200]))
     response.set_cookie('cf_session', token, httponly=True, secure=os.getenv('COOKIE_SECURE','false').lower()=='true', samesite='lax', max_age=604800, path='/')
     return {'user':user_json(u), 'csrf':csrf}
 
@@ -123,7 +124,7 @@ def bootstrap(data:Bootstrap,request:Request,response:Response):
         u=User(email=email,name=data.name,password_hash=hasher.hash(data.password),role='admin',status='active')
         db.add(u);db.flush()
         audit(db,u.name,'setup',u.id)
-        return login_response(db,u,response)
+        return login_response(db,u,response,request)
 
 @app.post('/api/auth/register',status_code=201)
 def register(data:Register,request:Request):
@@ -150,7 +151,7 @@ def login(data:Login,request:Request,response:Response):
     rate(request,'login',300)
     rate(request,'login-account:'+digest(data.email.lower().strip()),20)
     with DB.begin() as db:
-        u=db.scalar(select(User).where(User.email==data.email.lower().strip()))
+        u=db.scalar(select(User).where(User.email==data.email.lower().strip()).with_for_update())
         try:
             hasher.verify(u.password_hash if u else DUMMY,data.password)
         except VerificationError:
@@ -161,7 +162,8 @@ def login(data:Login,request:Request,response:Response):
             fail('approval_pending' if u.status=='pending' else 'account_inactive',403)
         if hasher.check_needs_rehash(u.password_hash):
             u.password_hash=hasher.hash(data.password)
-        return login_response(db,u,response)
+        challenge=make_challenge(db,u)
+        return challenge if challenge else login_response(db,u,response,request)
 
 @app.get('/api/auth/me')
 def me(request:Request):
@@ -262,19 +264,25 @@ def revoke(invite_id:str,request:Request):
     return {'ok':True}
 
 class Password(Input):
+    code:str=Field(default='',max_length=40)
     current_password:str=Field(min_length=1,max_length=128)
     new_password:str=Field(min_length=12,max_length=128)
 
 @app.post('/api/auth/password')
 def password(data:Password,request:Request,response:Response):
+    rate(request,'password-change',20)
     with DB.begin() as db:
-        u=current(request,db)
+        actor=current(request,db)
+        u=db.scalar(select(User).where(User.id==actor.id).with_for_update().execution_options(populate_existing=True))
         try:hasher.verify(u.password_hash,data.current_password)
         except VerificationError:fail('invalid_credentials',401)
+        factor=db.scalar(select(TwoFactor).where(TwoFactor.user_id==u.id).with_for_update())
+        if factor and factor.enabled and not consume_code(factor,data.code):fail('mfa_invalid',400)
         u.password_hash=hasher.hash(data.new_password)
+        db.execute(delete(LoginChallenge).where(LoginChallenge.user_id==u.id))
         db.execute(delete(Session).where(Session.user_id==u.id))
         audit(db,u.name,'password_changed',u.id)
-        return login_response(db,u,response)
+        return login_response(db,u,response,request)
 
 @app.post('/api/auth/users/{user_id}/reset')
 def create_reset(user_id:str,request:Request):
@@ -301,6 +309,7 @@ def consume_reset(data:ResetInput,request:Request):
         if not item or item.expires<now():fail('reset_invalid',400)
         u=db.get(User,item.user_id)
         u.password_hash=hasher.hash(data.password)
+        db.execute(delete(LoginChallenge).where(LoginChallenge.user_id==u.id))
         db.execute(delete(Session).where(Session.user_id==u.id))
         db.delete(item);audit(db,u.name,'password_reset',u.id)
     return {'ok':True}
@@ -341,3 +350,6 @@ def question_recipients(request:Request):
     with DB() as db:
         return [{'id':u.id, 'name':u.name, 'role':u.role, 'group_role':user_json(u)['group_role']}
                 for u in db.scalars(select(User).where(User.status=='active', User.role.in_(('head','deputy','admin'))).order_by(User.name))]
+
+
+install(app,DB,current,hasher,rate,audit,login_response)

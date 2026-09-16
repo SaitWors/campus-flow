@@ -47,3 +47,6 @@ def test_real_http_workflow(cluster):
 
     from scripts.verify_community import run as community
     community(urls)
+
+    from scripts.verify_pr3 import run as pr3
+    pr3(urls)

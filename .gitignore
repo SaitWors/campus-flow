@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
+.production/
 node_modules/
 dist/
 __pycache__/

@@ -1,5 +1,5 @@
-/* Service worker handles Web Push only. No private HTML, API responses or
-   authenticated timetable data are stored in a shared offline cache. */
+/* Web Push and an explicitly saved public timetable. Private API responses
+   and authenticated app pages are never cached. */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 const allowedRoutes = new Set(['#schedule', '#queues', '#notifications', '#questions']);
@@ -54,10 +54,57 @@ self.addEventListener('notificationclick', event => {
     return self.clients.openWindow(target);
   })());
 });
+const OFFLINE_CACHE = 'campus-public-offline-v1';
+const OFFLINE_FILES = ['/offline.html', '/offline.js', '/offline.css'];
+const SNAPSHOT_URL = '/offline-data.json';
+const publicLessonKeys = ['id','title','title_en','title_en_auto','kind','room','mode','start','end','subgroup','status','date','starts_at','ends_at','parity','demo'];
+self.addEventListener('message', event => {
+  if (!['offline-save', 'offline-status', 'offline-delete'].includes(event.data?.type)) return;
+  event.waitUntil((async () => {
+    try {
+      const cache = await caches.open(OFFLINE_CACHE);
+      if (event.data.type === 'offline-delete') await cache.delete(SNAPSHOT_URL);
+      if (event.data.type === 'offline-save') {
+        const {start, end, subgroup} = event.data;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) ||
+            !Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end)) ||
+            Date.parse(end) < Date.parse(start) || Date.parse(end) - Date.parse(start) > 31*86400000 || ![0,1,2].includes(subgroup)) throw new Error('invalid_range');
+        const [settingsResponse, lessonsResponse] = await Promise.all([
+          fetch('/api/schedule/guest/settings', {credentials:'omit', cache:'no-store'}),
+          fetch('/api/schedule/guest/occurrences?' + new URLSearchParams({start,end,subgroup}), {credentials:'omit', cache:'no-store'}),
+        ]);
+        if (!settingsResponse.ok || !lessonsResponse.ok) throw new Error('network');
+        const settings = await settingsResponse.json(), lessons = await lessonsResponse.json();
+        const snapshot = {saved_at:new Date().toISOString(), start, end, subgroup,
+          settings:{group:settings.group, timezone:settings.timezone},
+          lessons:lessons.map(item => Object.fromEntries(publicLessonKeys.filter(k => k in item).map(k => [k,item[k]])))};
+        await cache.addAll(OFFLINE_FILES);
+        await cache.put(SNAPSHOT_URL, new Response(JSON.stringify(snapshot), {headers:{'Content-Type':'application/json'}}));
+      }
+      const saved = await cache.match(SNAPSHOT_URL);
+      const data = saved ? await saved.json() : null;
+      event.ports[0]?.postMessage({ok:true, saved_at:data?.saved_at || null});
+    } catch { event.ports[0]?.postMessage({ok:false}); }
+  })());
+});
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  if (url.pathname === SNAPSHOT_URL) {
+    event.respondWith(caches.open(OFFLINE_CACHE).then(async cache => (await cache.match(SNAPSHOT_URL)) || new Response('null', {headers:{'Content-Type':'application/json'}})));
+    return;
+  }
+  if (OFFLINE_FILES.includes(url.pathname)) {
+    event.respondWith(fetch(event.request).catch(async () => (await caches.open(OFFLINE_CACHE)).match(url.pathname)).then(response => response || new Response('Offline copy unavailable', {status:503})));
+    return;
+  }
   if (event.request.mode !== 'navigate') return;
-  event.respondWith(fetch(event.request).catch(() => new Response(
-    '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Campus Flow</title><h1>Campus Flow</h1><p>Нет подключения. Расписание и очереди требуют связи с сервером.</p><p>You are offline. Reconnect to view the current timetable and queues.</p><a href="/">Повторить / Retry</a></html>',
-    {status:503,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}}
-  )));
+  // A cached app shell cannot load private APIs offline. Bypass the HTTP cache
+  // so a lost connection opens the explicitly saved public timetable instead.
+  event.respondWith(fetch(event.request, {cache:'no-store'}).catch(async () => {
+    const cache = await caches.open(OFFLINE_CACHE);
+    return (await cache.match('/offline.html')) || new Response(
+      '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Campus Flow</title><h1>Campus Flow</h1><p>Нет подключения и сохранённой копии. / Offline; no saved timetable.</p><a href="/">Повторить / Retry</a></html>',
+      {status:503,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
+  }));
 });

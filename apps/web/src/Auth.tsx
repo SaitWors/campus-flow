@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {ArrowRight,CalendarDays,CheckCircle2,ShieldCheck} from 'lucide-react';
 import {api} from './api';
+import {MfaSignIn} from './Security';
 import type {User} from './types';
 import {Button,Field,Notice,useApp,useJob,useT} from './ui';
 
@@ -8,13 +9,14 @@ export type Session={user:User;csrf:string};
 export default function Auth({setup,onSession,onGuest}:{setup:boolean;onSession:(s:Session)=>void;onGuest:()=>void}){
  const t=useT();const {lang,setLang}=useApp();const job=useJob();
  const [mode,setMode]=useState<'login'|'register'|'reset'>( 'login');
+ const [challenge,setChallenge]=useState('');
  const [done,setDone]=useState('');const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [token,setToken]=useState('');const [subgroup,setSubgroup]=useState(1);
  const heading=setup?'setupTitle':mode==='register'?'registerTitle':mode==='reset'?'resetPassword':'loginTitle';
- function change(next:typeof mode){setMode(next);setDone('');setPassword('');setToken('');}
+ function change(next:typeof mode){setMode(next);setChallenge('');setDone('');setPassword('');setToken('');}
  return <main className="auth-layout"><aside className="auth-brand"><a className="brand" href="#"><span className="brand-mark"><CalendarDays size={25}/></span><span>campus<span className="brand-light">flow</span><small>МТУСИ · БВТ2302</small></span></a><div className="auth-story"><span className="eyebrow">09.03.01 / {t('course')} 4</span><h1>{lang==='ru'?<>Вся неделя.<br/>В одном месте.</>:<>Your whole week.<br/>In one place.</>}</h1><p>{t('authSubtitle')}</p><div className="auth-strip"><CalendarDays size={21}/><span>{t('schedule')}</span><span className="strip-separator"/><ShieldCheck size={21}/><span>{t('queue')}</span></div></div><small>{t('notOfficial')}</small></aside><section className="auth-form-side"><div className="auth-language"><button onClick={()=>setLang(lang==='ru'?'en':'ru')}>{lang==='ru'?'English':'Русский'}</button></div><div className="auth-card"><div className="intro-icon"><ShieldCheck size={25}/></div><h2>{t(heading)}</h2><p className="muted">{t(setup?'setupSubtitle':mode==='register'?'inviteExplain':mode==='reset'?'resetExplain':'authSubtitle')}</p>
- {done?<><div className="success-panel"><CheckCircle2 size={28}/><h3>{t(done==='registered'?'registrationDone':'resetDone')}</h3>{done==='registered'&&<p>{t('registrationHint')}</p>}</div><Button onClick={()=>change('login')}>{t('backLogin')}<ArrowRight size={18}/></Button></>:<form onSubmit={e=>{e.preventDefault();void job.run(async()=>{
+ {challenge?<MfaSignIn challenge={challenge} onSession={onSession} onBack={()=>change('login')}/>:done?<><div className="success-panel"><CheckCircle2 size={28}/><h3>{t(done==='registered'?'registrationDone':'resetDone')}</h3>{done==='registered'&&<p>{t('registrationHint')}</p>}</div><Button onClick={()=>change('login')}>{t('backLogin')}<ArrowRight size={18}/></Button></>:<form onSubmit={e=>{e.preventDefault();void job.run(async()=>{
   if(setup){onSession(await api<Session>('/api/auth/setup','POST',{email,password,name,setup_key:token}));return;}
-  if(mode==='login'){onSession(await api<Session>('/api/auth/login','POST',{email,password}));return;}
+  if(mode==='login'){const result=await api<Session|{mfa_required:true;challenge:string}>('/api/auth/login','POST',{email,password});if('mfa_required' in result){setChallenge(result.challenge);setPassword('');}else onSession(result);return;}
   if(mode==='register'){await api('/api/auth/register','POST',{email,password,name,subgroup,invite:token});setDone('registered');}
   else{await api('/api/auth/reset','POST',{password,token});setDone('reset');}
  });}}>
@@ -25,7 +27,7 @@ export default function Auth({setup,onSession,onGuest}:{setup:boolean;onSession:
  {!setup&&mode==='register'&&<Field label={t('subgroup')}><select value={subgroup} onChange={e=>setSubgroup(+e.target.value)}><option value={1}>1</option><option value={2}>2</option></select></Field>}
  {job.error&&<Notice error>{job.error}</Notice>}<Button type="submit" busy={job.busy} className="full-width">{t(setup?'createAdmin':mode==='register'?'register':mode==='reset'?'resetSubmit':'login')}<ArrowRight size={18}/></Button>
  </form>}
- {!setup&&!done&&<div className="auth-links">{mode==='login'?<><button onClick={()=>change('register')}>{t('noAccount')} <strong>{t('register')}</strong></button><button onClick={()=>change('reset')}>{t('forgot')}</button></>:<button onClick={()=>change('login')}>{t('backLogin')}</button>}</div>}
+ {!setup&&!done&&!challenge&&<div className="auth-links">{mode==='login'?<><button onClick={()=>change('register')}>{t('noAccount')} <strong>{t('register')}</strong></button><button onClick={()=>change('reset')}>{t('forgot')}</button></>:<button onClick={()=>change('login')}>{t('backLogin')}</button>}</div>}
  {!setup&&<Button variant="secondary" className="full-width guest-enter" onClick={onGuest}><CalendarDays size={18}/>{t('guestEnter')}</Button>}
  </div></section></main>;
 }
