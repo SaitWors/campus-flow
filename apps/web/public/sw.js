@@ -99,7 +99,9 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (event.request.mode !== 'navigate') return;
-  event.respondWith(fetch(event.request).catch(async () => {
+  // A cached app shell cannot load private APIs offline. Bypass the HTTP cache
+  // so a lost connection opens the explicitly saved public timetable instead.
+  event.respondWith(fetch(event.request, {cache:'no-store'}).catch(async () => {
     const cache = await caches.open(OFFLINE_CACHE);
     return (await cache.match('/offline.html')) || new Response(
       '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Campus Flow</title><h1>Campus Flow</h1><p>Нет подключения и сохранённой копии. / Offline; no saved timetable.</p><a href="/">Повторить / Retry</a></html>',

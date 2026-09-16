@@ -66,10 +66,18 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   assert(snapshot.lessons.every(l=>forbidden.every(k=>!(k in l))));
   const keys=await page.evaluate(async()=>{const c=await caches.open('campus-public-offline-v1');return (await c.keys()).map(r=>new URL(r.url).pathname);});
   assert.deepEqual(keys.sort(),['/offline-data.json','/offline.css','/offline.html','/offline.js'].sort());
-  await admin.setOffline(true);await page.goto('/offline.html');await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();
-  assert(await page.locator('article').count()>0);await page.setViewportSize({width:390,height:844});
+  const offlineConsole=[];page.on('console',m=>{if(m.type()==='error')offlineConsole.push(m.text());});
+  async function openOffline(path){
+   await page.goto(path);
+   try{await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();}
+   catch(error){await page.screenshot({path:'test-results/pr3-offline-failure.png',fullPage:true});console.error('Offline diagnostics:',JSON.stringify({path,console:offlineConsole,pageErrors:errors,body:await page.locator('body').innerText()}));throw error;}
+   assert(await page.locator('article').count()>0);
+  }
+  await admin.setOffline(true);await openOffline('/offline.html');
+  await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'test-results/pr3-offline-mobile.png',fullPage:true});
-  await page.goto('/');await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();
+  // The production server's ordinary HTTP cache must not mask the offline fallback.
+  await openOffline('/');
   await page.getByRole('button',{name:'Delete copy',exact:true}).click();await page.getByText('No saved copy.',{exact:false}).waitFor();
   await admin.setOffline(false);
   await page.goto('/#admin');
