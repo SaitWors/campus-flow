@@ -7,6 +7,35 @@ on:
 permissions:
   contents: read
 jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CAMPUS_DISPOSABLE: '1'
+      NODE_PATH: /tmp/campus-production-browser/node_modules
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Integration and browser dependencies
+        run: |
+          pip install httpx==0.28.1
+          npm install --prefix /tmp/campus-production-browser --no-audit --no-fund playwright@1.58.2
+          /tmp/campus-production-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Single PostgreSQL, PR2 migration, bounded resources, backup and image rollback
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python -u scripts/verify_production.py 2>&1 | tee test-results/production-checks.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: campus-flow-production-checks
+          path: test-results/
+          if-no-files-found: ignore
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
