@@ -14,7 +14,9 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   await admin.addInitScript(()=>{try{if(!localStorage.getItem('cf-language'))localStorage.setItem('cf-language','en');}catch{}});
   assert((await admin.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}})).ok());
   const page=await admin.newPage();page.setDefaultTimeout(15000);
-  await page.goto('/#admin');await page.getByRole('tab',{name:'Subjects and class times',exact:true}).click();
+  const appResponse=await page.goto('/#admin');
+  assert.match(appResponse.headers()['cache-control']||'',/\bno-store\b/,'Production HTML must not be cached');
+  await page.getByRole('tab',{name:'Subjects and class times',exact:true}).click();
   await page.getByRole('heading',{name:'Class times',exact:true}).waitFor();
   assert.equal(await page.locator('.preset-row').count(),5);
   assert.equal(await page.getByLabel('Starts',{exact:true}).first().inputValue(),'09:30');
@@ -73,7 +75,10 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
    catch(error){await page.screenshot({path:'test-results/pr3-offline-failure.png',fullPage:true});console.error('Offline diagnostics:',JSON.stringify({path,fromWorker:response.fromServiceWorker(),headers:await response.allHeaders(),console:offlineConsole,pageErrors:errors,body:await page.locator('body').innerText()}));throw error;}
    assert(await page.locator('article').count()>0);
   }
-  await admin.setOffline(true);
+  // Older Chromium can still perform worker navigation fetches during offline
+  // emulation. Block outgoing requests too, including service worker requests.
+  const disconnect=route=>route.abort('internetdisconnected');
+  await admin.route('**/*',disconnect);await admin.setOffline(true);
   const worker=admin.serviceWorkers().find(w=>new URL(w.url()).pathname==='/sw.js');assert(worker);
   assert.equal(await worker.evaluate(async()=>{try{await fetch('/api/schedule/guest/settings',{cache:'no-store'});return false;}catch{return true;}}),true,'Service worker must also be disconnected');
   await openOffline('/offline.html');
@@ -82,7 +87,7 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   // The production server's ordinary HTTP cache must not mask the offline fallback.
   await openOffline('/');
   await page.getByRole('button',{name:'Delete copy',exact:true}).click();await page.getByText('No saved copy.',{exact:false}).waitFor();
-  await admin.setOffline(false);
+  await admin.unroute('**/*',disconnect);await admin.setOffline(false);
   await page.goto('/#admin');
   await page.evaluate(()=>{localStorage.setItem('cf-language','ru');localStorage.setItem('cf-theme','dark');});
   await page.reload();await page.getByRole('tab',{name:'Предметы и время пар',exact:true}).click();
