@@ -67,3 +67,23 @@ def test_rollback_rejects_incompatible_image_before_any_database_write(monkeypat
         'io.campus-flow.schemas':json.dumps({s:2 for s in p.SERVICES})}}}
     monkeypatch.setattr(p, 'run', lambda *a, **kw:json.dumps([image]))
     with pytest.raises(RuntimeError, match='incompatible'): p.inspect_images(stack, schemas=p.SCHEMAS)
+
+
+def test_saved_release_preserves_secrets_and_private_permissions(tmp_path):
+    env = tmp_path/'config.env'; env.write_text('INTERNAL_TOKEN=unchanged\nIMAGE_TAG='+('a'*40)+'\nSETUP_KEY=unchanged-too\n'); env.chmod(0o600)
+    stack = SimpleNamespace(env_file=env, env_digest=p.sha256(env), tag='b'*40)
+    p.persist_release(stack)
+    assert env.read_text() == 'INTERNAL_TOKEN=unchanged\nIMAGE_TAG='+('b'*40)+'\nSETUP_KEY=unchanged-too\n'
+    assert env.stat().st_mode & 0o777 == 0o600
+    assert stack.env_digest == p.sha256(env)
+    env.write_text('operator changed the file')
+    with pytest.raises(RuntimeError, match='changed during deployment'): p.persist_release(stack)
+    assert env.read_text() == 'operator changed the file'
+
+
+def test_concurrent_operations_are_rejected_and_lock_is_released(tmp_path):
+    stack = SimpleNamespace(state=tmp_path, project='fixture')
+    with p.operation_lock(stack):
+        with pytest.raises(RuntimeError, match='already running'):
+            with p.operation_lock(stack): pytest.fail('A second writer acquired the lock')
+    with p.operation_lock(stack): pass

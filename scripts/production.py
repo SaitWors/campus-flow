@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from contextlib import contextmanager, ExitStack
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,37 @@ def private_json(path, value):
         json.dump(value, stream, ensure_ascii=False, indent=2)
         stream.flush(); os.fsync(stream.fileno())
     temporary.replace(path)
+
+
+@contextmanager
+def operation_lock(stack):
+    import fcntl
+    with open(stack.state/'operation.lock', 'a', opener=lambda p, flags: os.open(p, flags, 0o600)) as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('Another production operation is already running: '+stack.project) from None
+        try:
+            yield
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def persist_release(stack):
+    # Keep a later manual Compose command on the successfully deployed release.
+    if sha256(stack.env_file) != stack.env_digest:
+        raise RuntimeError('Environment file changed during deployment; review IMAGE_TAG before continuing')
+    text = stack.env_file.read_text()
+    text, count = re.subn(r'(?m)^(?:export\s+)?IMAGE_TAG\s*=.*$', 'IMAGE_TAG='+stack.tag, text)
+    if not count: text = text.rstrip('\n')+'\nIMAGE_TAG='+stack.tag+'\n'
+    temporary = stack.env_file.with_name(stack.env_file.name+'.'+uuid.uuid4().hex+'.tmp')
+    try:
+        with open(temporary, 'x', opener=lambda p, flags: os.open(p, flags, 0o600)) as stream:
+            stream.write(text); stream.flush(); os.fsync(stream.fileno())
+        temporary.replace(stack.env_file)
+    finally:
+        temporary.unlink(missing_ok=True)
+    stack.env_digest = sha256(stack.env_file)
 
 
 def run(args, *, what, cwd=ROOT, env=None, input=None, output=None, source=None):
@@ -99,6 +131,7 @@ class Stack:
         self.env_file = Path(env_file).resolve(); self.compose_file = Path(compose_file).resolve()
         if not self.env_file.is_file() or self.env_file.stat().st_mode & 0o077:
             raise RuntimeError('The environment file must exist and have mode 600')
+        self.env_digest = sha256(self.env_file)
         self.environment = dict(os.environ)
         if image_tag: self.environment['IMAGE_TAG'] = image_tag
         self.prefix = ['docker', 'compose', '--env-file', str(self.env_file), '-f', str(self.compose_file)]
@@ -112,6 +145,7 @@ class Stack:
         if disposable and (os.getenv('CAMPUS_DISPOSABLE') != '1' or not self.project.startswith('campus-ci-')):
             raise RuntimeError('Disposable mode requires CAMPUS_DISPOSABLE=1 and a campus-ci- project')
         self.tag = None if legacy else validate_config(self.config, disposable=disposable)
+        if self.tag: self.environment['IMAGE_TAG'] = self.tag
         self.state = ROOT/'.production'/self.project
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
 
@@ -334,6 +368,7 @@ def deploy(stack):
     folder = backup(stack, resume=False) if all(presence) else None
     stack.dc('up', '-d', '--wait', '--wait-timeout', '300', what='Deploy verified images')
     smoke(stack)
+    persist_release(stack)
     private_json(stack.state/'deployment.json', {'current':stack.tag, 'previous':previous,
         'backup':str(folder) if folder else None, 'at':stamp()})
     diagnose(stack, include_logs=False)
@@ -351,7 +386,7 @@ def rollback(stack, tag, disposable=False):
     inspect_images(target, schemas=versions)
     confirm('ROLLBACK')
     deploy(target)
-    print('Set IMAGE_TAG='+tag+' in your environment file before the next manual Compose command.')
+    print('Rollback verified; IMAGE_TAG saved in the environment file:', tag)
 
 
 def migrate_four(source, target):
@@ -400,7 +435,7 @@ def diagnose(stack, *, include_logs=True):
     print(run(['docker','system','df'], what='Docker disk sample'))
     summary = [{'service':c['Config']['Labels']['com.docker.compose.service'],
                 'restarts':c['RestartCount'], 'oom':c['State']['OOMKilled'],
-                'health':c['State'].get('Health',{}).get('Status',c['State']['Status'])} for c in containers]
+                'health':c['State'].get('Health',{}).get('Status',c['State']['Status']) if c['State']['Running'] else c['State']['Status']} for c in containers]
     print(json.dumps(summary, indent=2))
     if include_logs:
         # Whitelist structured fields. Never reproduce arbitrary exception/SQL text.
@@ -449,18 +484,23 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     stack = Stack(args.env_file, args.compose_file, args.project, disposable=args.disposable, image_tag=args.image_tag)
-    if args.action == 'validate': print('PASS: image-only production config, private ports, bounded resources and credentials')
-    elif args.action == 'backup': backup(stack)
-    elif args.action in ('test-restore','restore'):
-        if not args.backup: parser.error('--backup is required')
-        (test_restore if args.action == 'test-restore' else restore)(stack, args.backup)
-    elif args.action == 'deploy': deploy(stack)
-    elif args.action == 'rollback': rollback(stack, args.image_tag, args.disposable)
-    elif args.action == 'migrate':
+    source = None
+    if args.action == 'migrate':
         source = Stack(args.source_env, args.source_compose, args.source_project, legacy=True, disposable=args.disposable)
-        migrate_four(source, stack)
-    elif args.action == 'diagnose': diagnose(stack)
-    elif args.action == 'budget': budget(stack)
+    with ExitStack() as locks:
+        if args.action not in ('validate','diagnose','budget'):
+            for item in sorted([stack]+([source] if source else []), key=lambda s:s.project):
+                locks.enter_context(operation_lock(item))
+        if args.action == 'validate': print('PASS: image-only production config, private ports, bounded resources and credentials')
+        elif args.action == 'backup': backup(stack)
+        elif args.action in ('test-restore','restore'):
+            if not args.backup: parser.error('--backup is required')
+            (test_restore if args.action == 'test-restore' else restore)(stack, args.backup)
+        elif args.action == 'deploy': deploy(stack)
+        elif args.action == 'rollback': rollback(stack, args.image_tag, args.disposable)
+        elif args.action == 'migrate': migrate_four(source, stack)
+        elif args.action == 'diagnose': diagnose(stack)
+        elif args.action == 'budget': budget(stack)
 
 
 if __name__ == '__main__':

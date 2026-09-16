@@ -133,10 +133,24 @@ def main():
             with patch('builtins.input',return_value='RESTORE'): p.restore(fresh,saved)
             with patch('builtins.input',return_value='ROLLBACK'): p.rollback(fresh,PREVIOUS,disposable=True)
             command(sys.executable,'scripts/verify_restore.py')
+            fresh = p.Stack(folder/'fresh.env',ROOT/'compose.production.yaml','campus-ci-fresh',disposable=True,image_tag=current)
             p.deploy(fresh)
             command(sys.executable,'scripts/verify_restore.py')
             p.budget(fresh)
             print('PASS: production profile, memory limits, browser, erased-database recovery, operator restore, real previous-image rollback and forward update')
+        except Exception:
+            # Only this job's synthetic fixtures exist here. Still redact every secret
+            # before sharing the private command error in CI (never in the live CLI).
+            error_file = ROOT/'.production'/'last-error.log'
+            if error_file.exists():
+                details = error_file.read_text()
+                for stack in created:
+                    for service in stack.config['services'].values():
+                        for key, value in service.get('environment', {}).items():
+                            if any(word in key for word in ('PASSWORD','TOKEN','KEY','DATABASE_URL')) and value:
+                                details = details.replace(str(value), '[redacted]')
+                print('Disposable CI command error:', details[-12000:])
+            raise
         finally:
             for stack in reversed(created):
                 try:
