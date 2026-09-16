@@ -58,3 +58,22 @@ def test_checksum_mismatch_cannot_install_and_retries_are_bounded(tmp_path):
     session=Session();path=tmp_path/'model.argosmodel'
     with pytest.raises(RuntimeError):installer.download(path,session=session,wait=lambda _:None)
     assert session.calls==5 and not path.exists() and not path.with_suffix('.part').exists()
+
+
+def test_official_host_failure_falls_back_to_verified_mirror(tmp_path,monkeypatch):
+    data=model();monkeypatch.setattr(installer,'MODEL_SHA256',hashlib.sha256(data).hexdigest())
+    calls=[]
+    class Response:
+        status_code=200;headers={'Content-Length':str(len(data))}
+        def __enter__(self):return self
+        def __exit__(self,*_):pass
+        def iter_content(self,_):yield data
+    class Session:
+        def get(self,url,**kwargs):
+            calls.append(url)
+            assert kwargs['allow_redirects'] is False
+            if url==installer.MODEL_URLS[0]:raise requests.ConnectionError('fixture host unavailable')
+            return Response()
+    path=installer.download(tmp_path/'model.argosmodel',session=Session(),wait=lambda _:None)
+    assert calls==[installer.MODEL_URLS[0],installer.MODEL_URLS[0],installer.MODEL_URLS[1]]
+    assert path.read_bytes()==data

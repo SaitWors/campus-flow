@@ -7,7 +7,11 @@ import zipfile
 from pathlib import Path
 import requests
 
-MODEL_URL = 'https://argos-net.com/v1/translate-ru_en-1_9.argosmodel'
+MODEL_URLS = (
+    'https://data.argosopentech.com/argospm/v1/translate-ru_en-1_9.argosmodel',
+    'https://argos-net.com/v1/translate-ru_en-1_9.argosmodel',
+)
+MODEL_URL = MODEL_URLS[0]
 # Downloaded from the official index URL and verified in CI run 34857579640.
 MODEL_SHA256 = 'e9ba8bf722d10a4a4c39f74289d5938fd47eac08dbe4ed0afd22d89445a5c3ac'
 MAX_BYTES = 400 * 1024 * 1024
@@ -51,7 +55,9 @@ def download(path, session=None, wait=time.sleep):
     for attempt in range(1, 6):
         try:
             size = partial.stat().st_size if partial.exists() else 0
-            with session.get(MODEL_URL, headers={'Range': f'bytes={size}-'} if size else {},
+            # Retry once on the official index host, then use the verified mirror.
+            url = MODEL_URLS[min((attempt-1)//2, len(MODEL_URLS)-1)]
+            with session.get(url, headers={'Range': f'bytes={size}-'} if size else {},
                              stream=True, timeout=(15, 45), allow_redirects=False) as response:
                 if response.status_code not in (200, 206):
                     raise ValueError('model_download_http_error')
