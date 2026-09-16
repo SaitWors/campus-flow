@@ -68,12 +68,15 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   assert.deepEqual(keys.sort(),['/offline-data.json','/offline.css','/offline.html','/offline.js'].sort());
   const offlineConsole=[];page.on('console',m=>{if(m.type()==='error')offlineConsole.push(m.text());});
   async function openOffline(path){
-   await page.goto(path);
+   const response=await page.goto(path);
    try{await page.getByRole('heading',{name:'Saved timetable',exact:true}).waitFor();}
-   catch(error){await page.screenshot({path:'test-results/pr3-offline-failure.png',fullPage:true});console.error('Offline diagnostics:',JSON.stringify({path,console:offlineConsole,pageErrors:errors,body:await page.locator('body').innerText()}));throw error;}
+   catch(error){await page.screenshot({path:'test-results/pr3-offline-failure.png',fullPage:true});console.error('Offline diagnostics:',JSON.stringify({path,fromWorker:response.fromServiceWorker(),headers:await response.allHeaders(),console:offlineConsole,pageErrors:errors,body:await page.locator('body').innerText()}));throw error;}
    assert(await page.locator('article').count()>0);
   }
-  await admin.setOffline(true);await openOffline('/offline.html');
+  await admin.setOffline(true);
+  const worker=admin.serviceWorkers().find(w=>new URL(w.url()).pathname==='/sw.js');assert(worker);
+  assert.equal(await worker.evaluate(async()=>{try{await fetch('/api/schedule/guest/settings',{cache:'no-store'});return false;}catch{return true;}}),true,'Service worker must also be disconnected');
+  await openOffline('/offline.html');
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'test-results/pr3-offline-mobile.png',fullPage:true});
   // The production server's ordinary HTTP cache must not mask the offline fallback.
