@@ -14,3 +14,4 @@ test-results
 **/*.bundle
 docs
 .dev-data
+.production

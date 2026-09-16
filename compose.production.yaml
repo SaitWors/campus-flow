@@ -1,0 +1,145 @@
+# Standalone profile for a small VM. Never layer it over compose.yaml.
+name: campus-flow-production
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
+x-app: &app
+  image: ${IMAGE_REPOSITORY:-ghcr.io/saitwors/campus-flow}-api:${IMAGE_TAG:?Set an immutable commit SHA in .env.production}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *logging
+  mem_limit: 160m
+  cpus: 0.75
+  pids_limit: 96
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 30s
+
+x-environment: &environment
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Preserve the existing INTERNAL_TOKEN when migrating}
+  APP_ORIGIN: ${APP_ORIGIN:?Set the HTTPS origin}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  AUTH_URL: http://auth:8000
+  SCHEDULE_URL: http://schedule:8000
+  QUEUE_URL: http://queue:8000
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-2}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-2}
+  DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-10}
+  DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+  DB_POOL_PRE_PING: ${DB_POOL_PRE_PING:-true}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    mem_limit: 384m
+    shm_size: 64m
+    cpus: 1.0
+    pids_limit: 96
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a separate database administrator password}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?Set a database password}
+      SCHEDULE_DB_PASSWORD: ${SCHEDULE_DB_PASSWORD:?Set a database password}
+      QUEUE_DB_PASSWORD: ${QUEUE_DB_PASSWORD:?Set a database password}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?Set a database password}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command: [postgres, -c, config_file=/etc/postgresql/campus.conf]
+    volumes:
+      - production_data:/var/lib/postgresql/data
+      - ./infra/postgres-production.conf:/etc/postgresql/campus.conf:ro
+      - ./infra/init-production-databases.sql:/docker-entrypoint-initdb.d/10-campus.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [data_net]
+  auth:
+    <<: *app
+    command: [uvicorn, services.auth.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@postgres:5432/auth
+      SETUP_KEY: ${SETUP_KEY:?Preserve the existing setup key}
+      AUTH_HASH_CONCURRENCY: '1'
+      AUTH_HASH_TIMEOUT: '5'
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [services_net, data_net]
+  schedule:
+    <<: *app
+    mem_limit: 224m
+    command: [uvicorn, services.schedule.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://schedule:${SCHEDULE_DB_PASSWORD}@postgres:5432/schedule
+      TRANSLATION_WORKER: 'false'
+    depends_on:
+      postgres: {condition: service_healthy}
+      auth: {condition: service_healthy}
+    networks: [services_net, data_net]
+  queue:
+    <<: *app
+    command: [uvicorn, services.queue.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://queue:${QUEUE_DB_PASSWORD}@postgres:5432/queue
+    depends_on:
+      postgres: {condition: service_healthy}
+      schedule: {condition: service_healthy}
+    networks: [services_net, data_net]
+  notifications:
+    <<: *app
+    mem_limit: 192m
+    command: [uvicorn, services.notifications.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log]
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql+psycopg://notifications:${NOTIFICATIONS_DB_PASSWORD}@postgres:5432/notifications
+      PUSH_ENABLED: ${PUSH_ENABLED:-true}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      NOTIFICATION_WORKER: ${NOTIFICATION_WORKER:-true}
+    depends_on:
+      postgres: {condition: service_healthy}
+      queue: {condition: service_healthy}
+    networks: [services_net, data_net]
+  web:
+    image: ${IMAGE_REPOSITORY:-ghcr.io/saitwors/campus-flow}-web:${IMAGE_TAG:?Set an immutable commit SHA in .env.production}
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 64
+    ports: ["127.0.0.1:${HTTP_PORT:-8080}:8080"]
+    depends_on:
+      auth: {condition: service_healthy}
+      schedule: {condition: service_healthy}
+      queue: {condition: service_healthy}
+      notifications: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [services_net]
+
+volumes:
+  production_data:
+networks:
+  services_net:
+  data_net: {internal: true}

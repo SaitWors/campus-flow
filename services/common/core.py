@@ -35,7 +35,19 @@ def fail(code, status=400):
 
 def database(service):
     url = os.getenv('DATABASE_URL', f'sqlite:///./{service}.db')
-    engine = create_engine(url, pool_pre_ping=True, **({'connect_args': {'check_same_thread': False, 'timeout': 30}} if url.startswith('sqlite') else {}))
+    options = {'pool_pre_ping': True}
+    if url.startswith('sqlite'):
+        options['connect_args'] = {'check_same_thread': False, 'timeout': 30}
+    else:
+        options.update(pool_size=env_int('DB_POOL_SIZE', 5, 1, 30),
+                       max_overflow=env_int('DB_MAX_OVERFLOW', 10, 0, 30),
+                       pool_timeout=env_int('DB_POOL_TIMEOUT', 10, 1, 120),
+                       pool_recycle=env_int('DB_POOL_RECYCLE', 1800, 30, 86400))
+        ping = os.getenv('DB_POOL_PRE_PING', 'true').lower()
+        if ping not in ('true', 'false'):
+            raise RuntimeError('DB_POOL_PRE_PING must be true or false')
+        options['pool_pre_ping'] = ping == 'true'
+    engine = create_engine(url, **options)
     if engine.dialect.name == 'sqlite':
         @event.listens_for(engine, 'connect')
         def connect(dbapi, _):
@@ -47,6 +59,16 @@ def database(service):
             # SQLite development/test mode serializes writers explicitly.
             conn.exec_driver_sql('BEGIN IMMEDIATE')
     return engine, sessionmaker(engine, expire_on_commit=False)
+
+
+def env_int(name, default, minimum, maximum):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        raise RuntimeError(f'{name} must be an integer') from None
+    if not minimum <= value <= maximum:
+        raise RuntimeError(f'{name} must be between {minimum} and {maximum}')
+    return value
 
 
 def migrate(engine, base, migrations=()):

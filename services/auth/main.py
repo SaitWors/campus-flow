@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Literal
 
-from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import Request, Response
 from pydantic import Field
@@ -15,9 +14,10 @@ from sqlalchemy.exc import IntegrityError
 from services.common.core import database, migrate, setup_app, Input, now, digest, fail, internal, manager, service_secret
 from services.auth.models import Base, User, Session, Invitation, Reset, Audit, Gate, TwoFactor, LoginChallenge
 from services.auth.security import migrate_security, make_challenge, consume_code, install
+from services.auth.passwords import BoundedPasswordHasher
 
 engine, DB = database('auth')
-hasher = PasswordHasher()
+hasher = BoundedPasswordHasher()
 DUMMY = hasher.hash(secrets.token_urlsafe(32))
 
 def add_group_role(conn):
