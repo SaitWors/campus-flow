@@ -29,7 +29,8 @@ def run(urls):
             guest.request('POST','/api/auth/register',{'email':email,'password':PASSWORD,'name':email,'invite':invitation,'subgroup':1},expected=201)
             u=next(u for u in admin.request('GET','/api/auth/users') if u['email']==email)
             admin.request('PATCH','/api/auth/users/'+u['id'],{'role':'student','status':'active','subgroup':1})
-        student=client().login('pr3-student@example.test');other=client().login('pr3-other@example.test')
+        student=client().login('pr3-student@example.test');other=client().login('pr3-other@example.test');deputy=client().login('student4@example.test')
+        admin.request('PATCH','/api/auth/users/'+other.user['id'],{'role':'head','status':'active','subgroup':1})
         for path in ('subjects','time-presets'):
             guest.request('GET','/api/schedule/'+path,expected=401)
             student.request('GET','/api/schedule/'+path,expected=403)
@@ -41,6 +42,8 @@ def run(urls):
         rule=admin.request('POST','/api/schedule/rules',body,expected=201)
         second=admin.request('POST','/api/schedule/rules',{**body,'title':'  МАТЕМАТИЧЕСКИЙ  АНАЛИЗ PR3 ','subgroup':2},expected=201)
         admin.request('POST','/api/schedule/rules',{**body,'subgroup':0},expected=409)
+        titles=[r['title'] for r in admin.request('GET','/api/schedule/rules')]
+        assert [x.casefold() for x in titles]==sorted((x.casefold() for x in titles))
         found=[s for s in admin.request('GET','/api/schedule/subjects') if s['title'].casefold()=='математический анализ pr3']
         assert len(found)==1 and found[0]['title_en']=='PR3 Mathematical analysis'
         path='/api/schedule/occurrences?start='+config['semester_start']+'&end='+config['semester_end']
@@ -71,7 +74,7 @@ def run(urls):
         assert admin.request('GET','/api/schedule/events')==events_before
         # Another manager changes a different occurrence after the preview.
         foreign=next(i for i in before if i['rule_id']==second['id'] and i['date']>=today.isoformat())
-        admin.request('PATCH','/api/schedule/occurrences/'+foreign['id'],{**{k:foreign[k] for k in fields},'room':'Concurrent room'})
+        foreign=admin.request('PATCH','/api/schedule/occurrences/'+foreign['id'],{**{k:foreign[k] for k in fields},'room':'Concurrent room'})
         admin.request('PUT','/api/schedule/rules/'+rule['id'],{**edit,'preview_token':preview['preview_token']},expected=409)
         preview=admin.request('POST','/api/schedule/rules/'+rule['id']+'/preview',edit)
         final=admin.request('PUT','/api/schedule/rules/'+rule['id'],{**edit,'preview_token':preview['preview_token']})
@@ -87,11 +90,18 @@ def run(urls):
         assert 'PR3 Mathematical analysis' in feed.text and '\r\n' in feed.text
         assert all(private not in feed.text for private in ('PRIVATE TEACHER PR3','PRIVATE NOTE PR3','private-meeting-pr3','DESCRIPTION:'))
         assert all(len(line.encode())<=75 for line in feed.text.split('\r\n'))
+        student.request('DELETE','/api/schedule/occurrences/'+foreign['id']+'?revision='+str(foreign['revision']),expected=403)
+        deputy.request('DELETE','/api/schedule/occurrences/'+foreign['id']+'?revision='+str(foreign['revision']),expected=403)
+        other.request('DELETE','/api/schedule/occurrences/'+foreign['id']+'?revision='+str(foreign['revision']))
+        assert all(i['id']!=foreign['id'] for i in admin.request('GET',path))
+        deleted=admin.request('GET','/api/schedule/occurrences/'+foreign['id'])
+        assert deleted['status']=='cancelled' and deleted['revision']==foreign['revision']+1
         admin.request('DELETE','/api/schedule/rules/'+rule['id']+'?revision='+str(final['revision']))
+        assert not any(i['rule_id']==rule['id'] for i in admin.request('GET',path))
         tombstones=guest.http.get(urls['schedule']+'/api/schedule/guest/calendar.ics').text
         assert 'STATUS:CANCELLED' in tombstones and any(i+'@campus-flow' in tombstones for i in changed_ids)
         admin.request('DELETE','/api/schedule/rules/'+second['id']+'?revision='+str(second['revision']))
-        print('PASS: subject deduplication, presets, permissions, preview rollback and concurrency, past/exception preservation, public calendar cancellation',flush=True)
+        print('PASS: subject deduplication, alphabetical templates, presets, preview concurrency, per-class delete permissions, full template removal and calendar cancellation',flush=True)
         # Enrollment requires both a password and a code; all other sessions end.
         parallel=client().login('pr3-student@example.test')
         devices=student.request('GET','/api/auth/sessions')
