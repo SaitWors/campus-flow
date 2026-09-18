@@ -127,7 +127,7 @@ def generate_rule(db,rule,config,future_only=False):
         d+=timedelta(days=1)
     db.flush()
     for item in db.scalars(select(Occurrence).where(Occurrence.rule_id==rule.id)):
-        if item.original_date not in wanted and item.date>=today.isoformat() and not item.overridden:
+        if item.original_date not in wanted and (rule.archived or (item.date>=today.isoformat() and not item.overridden)):
             if item.data.get('status')!='cancelled' or not item.data.get('removed_from_template'):
                 item.data={**item.data,'status':'cancelled','removed_from_template':True}
                 item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item)
@@ -167,7 +167,9 @@ def set_settings(data:ConfigInput,request:Request):
 def rules(request:Request):
     u=identity(request);manager(u)
     with DB() as db:
-        return [{**with_translation(r.data,db),'id':r.id,'revision':r.revision} for r in db.scalars(select(Rule).where(Rule.archived==False)).all()]
+        items=db.scalars(select(Rule).where(Rule.archived==False)).all()
+        items.sort(key=lambda r:(r.data.get('title','').casefold(),r.data.get('weekday',0),r.data.get('start','')))
+        return [{**with_translation(r.data,db),'id':r.id,'revision':r.revision} for r in items]
 
 @app.post('/api/schedule/rules',status_code=201)
 def add_rule(data:RuleInput,request:Request):
@@ -208,7 +210,7 @@ def occurrences(request:Request,start:date,end:date,subgroup:int=Query(default=0
     with DB() as db:
         config=settings(db).data
         items=db.scalars(select(Occurrence).where(Occurrence.date>=start.isoformat(),Occurrence.date<=end.isoformat()).order_by(Occurrence.date)).all()
-        return [row(i,config,db) for i in items if not i.data.get('removed_from_template') and (not subgroup or i.data['subgroup'] in (0,subgroup))]
+        return [row(i,config,db) for i in items if not i.data.get('removed_from_template') and not i.data.get('removed_from_schedule') and (not subgroup or i.data['subgroup'] in (0,subgroup))]
 
 @app.get('/api/schedule/occurrences/{oid}')
 def get_occurrence(oid:str,request:Request):
@@ -242,6 +244,22 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         event(db,'occurrence.cancelled' if data.status=='cancelled' else 'occurrence.updated',item)
         audit(db,u,'occurrence_updated',oid,{'before':before,'after':row(item,config,db)})
         return row(item,config,db)
+
+@app.delete('/api/schedule/occurrences/{oid}')
+def delete_occurrence(oid:str,request:Request,revision:int):
+    u=identity(request)
+    if u['role'] not in ('admin','head'):fail('forbidden',403)
+    with DB.begin() as db:
+        config=settings(db,True).data
+        item=db.get(Occurrence,oid)
+        if not item or item.data.get('removed_from_schedule') or item.data.get('removed_from_template'):fail('not_found',404)
+        if item.revision!=revision:fail('revision_conflict',409)
+        before=row(item,config,db)
+        item.data={**item.data,'status':'cancelled','removed_from_schedule':True}
+        item.overridden=True;item.revision+=1;item.updated_at=now()
+        db.flush();event(db,'occurrence.cancelled',item)
+        audit(db,u,'occurrence_deleted',oid,{'before':before})
+    return {'ok':True}
 
 @app.get('/api/schedule/events')
 def public_events(request:Request,after:int=Query(default=0,ge=0)):
@@ -357,6 +375,7 @@ def guest_occurrences(start:date, end:date, subgroup:int=Query(default=0,ge=0,le
         ).order_by(Occurrence.date, Occurrence.id)).all()
         return [{k:v for k,v in row(item,config,db).items() if k in PUBLIC_LESSON_FIELDS}
                 for item in items if not item.data.get('removed_from_template') and
+                not item.data.get('removed_from_schedule') and
                 (not subgroup or item.data['subgroup'] in (0,subgroup))]
 
 @app.get('/api/schedule/subjects')
@@ -441,7 +460,7 @@ def subscribe_calendar(lang:Literal['ru','en']='ru',subgroup:int=Query(default=0
             item=row(occurrence,config,db)
             # Tombstones remain in the feed so moved/removed lessons disappear
             # from calendars already subscribed to a subgroup.
-            cancelled=item['status']=='cancelled' or item.get('removed_from_template') or (subgroup and item['subgroup'] not in (0,subgroup))
+            cancelled=item['status']=='cancelled' or item.get('removed_from_template') or item.get('removed_from_schedule') or (subgroup and item['subgroup'] not in (0,subgroup))
             title=(item['title_en'] or item.get('title_en_auto') or item['title']) if lang=='en' else item['title']
             def utc(key):return datetime.fromisoformat(item[key]).astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             stamp=occurrence.updated_at.strftime('%Y%m%dT%H%M%SZ')
