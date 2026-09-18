@@ -375,6 +375,7 @@ def guest_occurrences(start:date, end:date, subgroup:int=Query(default=0,ge=0,le
         ).order_by(Occurrence.date, Occurrence.id)).all()
         return [{k:v for k,v in row(item,config,db).items() if k in PUBLIC_LESSON_FIELDS}
                 for item in items if not item.data.get('removed_from_template') and
+                not item.data.get('removed_from_schedule') and
                 (not subgroup or item.data['subgroup'] in (0,subgroup))]
 
 @app.get('/api/schedule/subjects')
@@ -459,7 +460,7 @@ def subscribe_calendar(lang:Literal['ru','en']='ru',subgroup:int=Query(default=0
             item=row(occurrence,config,db)
             # Tombstones remain in the feed so moved/removed lessons disappear
             # from calendars already subscribed to a subgroup.
-            cancelled=item['status']=='cancelled' or item.get('removed_from_template') or (subgroup and item['subgroup'] not in (0,subgroup))
+            cancelled=item['status']=='cancelled' or item.get('removed_from_template') or item.get('removed_from_schedule') or (subgroup and item['subgroup'] not in (0,subgroup))
             title=(item['title_en'] or item.get('title_en_auto') or item['title']) if lang=='en' else item['title']
             def utc(key):return datetime.fromisoformat(item[key]).astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
             stamp=occurrence.updated_at.strftime('%Y%m%dT%H%M%SZ')
