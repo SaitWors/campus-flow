@@ -29,7 +29,7 @@ def run(urls):
         guest.request('GET','/api/schedule/occurrences?start='+start+'&end='+end,expected=401)
         guest.request('GET','/api/schedule/calendar.ics?start='+start+'&end='+end,expected=401)
         guest.request('GET','/api/auth/users',expected=401)
-        guest.request('GET','/api/queues',expected=404)
+        assert guest.http.get(urls['schedule']+'/api/queues').status_code == 404
         guest.request('POST','/api/schedule/rules',
             {k:v for k,v in rules[0].items() if k not in ('id','title_en_auto','translation_pending','translation_enabled')},
             expected=401)
