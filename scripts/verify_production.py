@@ -57,7 +57,7 @@ def assert_pool_and_postgres(stack):
     for service in p.SERVICES:
         code = "from services.common.core import database; e,_=database('probe'); assert e.pool.size()==2 and e.pool._max_overflow==2 and e.pool.timeout()==10 and e.pool._recycle==1800 and e.pool._pre_ping; e.dispose()"
         stack.dc('exec','-T',service,'python','-c',code,what='Runtime connection pool check')
-    print('PASS: actual PostgreSQL memory settings and actual SQLAlchemy pools in all four containers')
+    print('PASS: actual PostgreSQL memory settings and SQLAlchemy pools in all three APIs')
 
 
 def main():
@@ -77,7 +77,7 @@ def main():
     created = []
     with tempfile.TemporaryDirectory(prefix='campus-ci-config-') as config_dir:
         folder = Path(config_dir)
-        original = environment(folder/'source.env',8080)
+        original = environment(folder/'source.env',8080,QUEUE_DB_PASSWORD=secrets.token_hex(32))
         source = p.Stack(folder/'source.env',old_checkout/'compose.yaml','campus-ci-source',legacy=True,disposable=True)
         shared = {key:original[key] for key in ('INTERNAL_TOKEN','SETUP_KEY')}
         environment(folder/'migrated.env',8081,shared,NOTIFICATION_WORKER='false')
@@ -89,14 +89,25 @@ def main():
             created.append(source)
             source.dc('build',*p.APPS,what='Build genuine PR2 fixture')
             source.dc('up','-d','--wait','--wait-timeout','300',*p.APPS,what='Start genuine PR2 fixture')
-            smoke(api_urls(8080),original['SETUP_KEY']); notifications(api_urls(8080)); community(api_urls(8080))
+            # Use the genuine old client for the old API contract. The retired
+            # fourth database remains only in this upgrade fixture.
+            command(sys.executable, 'scripts/smoke.py', '--base-url', 'http://localhost:8080',
+                    '--allow-empty-instance', cwd=old_checkout, env={**os.environ, **original})
+            command(sys.executable, '-m', 'scripts.verify_notifications', cwd=old_checkout)
+            command(sys.executable, '-m', 'scripts.verify_community', cwd=old_checkout)
             old_session = httpx.Client(base_url='http://localhost:8080',trust_env=False)
             assert old_session.post('/api/auth/login',json={'email':'admin@example.test','password':'Integration-test-password-2026'}).status_code == 200
+            semester = old_session.get('/api/schedule/settings').json()
+            lesson_path = '/api/schedule/occurrences?start='+semester['semester_start']+'&end='+semester['semester_end']
+            original_lessons = old_session.get(lesson_path).json()
             created.append(migrated)
-            with patch('builtins.input',return_value='MIGRATE'): p.migrate_four(source,migrated)
+            with patch('builtins.input',return_value='MIGRATE'): p.migrate_databases(source,migrated)
             migration = json.loads((migrated.state/'migration.json').read_text())
             manifest = json.loads((Path(migration['backup'])/'manifest.json').read_text())
-            for service in p.SERVICES:
+            # migrate_databases verifies every table before any schema upgrade.
+            # auth keeps every original column; academic migrations deliberately
+            # remove retired lesson JSON fields and notifications retire a cursor.
+            for service in ('auth',):
                 before = manifest['snapshots'][service]
                 after = migrated.snapshot(service,columns={table:data['columns'] for table,data in before['tables'].items()})
                 p.compare_snapshots(before,after,upgraded=True)
@@ -107,18 +118,25 @@ def main():
             with httpx.Client(base_url='http://localhost:8081',cookies=old_session.cookies,trust_env=False) as client:
                 me = client.get('/api/auth/me'); assert me.status_code == 200
                 assert me.json()['user']['group_role'] == 'head'
+                lessons = {item['id']: item for item in client.get(lesson_path).json()}
+                for old in original_lessons:
+                    assert lessons[old['id']] == {**{k:v for k,v in old.items() if k != 'queue_enabled'},
+                        'subject_key': lessons[old['id']]['subject_key']}
             old_session.close()
-            print('PASS: real PR2 four-instance data migrated to PR3 single-instance; every original column matched, old session works, restart is idempotent')
+            print('PASS: legacy installation migrated to three databases; pre-upgrade dumps matched, lessons and old sessions preserved, restart idempotent')
             # Keep volumes, stop old stacks to measure only the fresh production profile.
             source.dc('stop',what='Stop disposable migration source'); migrated.dc('stop',what='Stop disposable migration target')
             created.append(fresh)
             p.deploy(fresh)
             values = fresh.config['services']['auth']['environment']
             smoke(api_urls(8080),values['SETUP_KEY']); notifications(api_urls(8080)); community(api_urls(8080)); pr3(api_urls(8080))
+            from scripts.verify_study import run as study
+            study(api_urls(8080))
             assert_pool_and_postgres(fresh)
             p.budget(fresh)
             # The same browser feature checks now run within production memory/CPU limits.
             command('node','scripts/check_pr3_ui.cjs',env={**os.environ,'CAMPUS_BASE_URL':'http://localhost:8080'})
+            command('node','scripts/check_study_ui.cjs',env={**os.environ,'CAMPUS_BASE_URL':'http://localhost:8080'})
             saved = p.backup(fresh); p.test_restore(fresh,saved)
             # Prove that restore repopulates erased disposable schemas, not just a live DB.
             fresh.dc('stop',*p.APPS,what='Pause disposable restore fixture')
@@ -131,13 +149,24 @@ def main():
             command(sys.executable,'scripts/verify_restore.py')
             # Exercise the operator restore path too, including its pre-restore backup.
             with patch('builtins.input',return_value='RESTORE'): p.restore(fresh,saved)
-            with patch('builtins.input',return_value='ROLLBACK'): p.rollback(fresh,PREVIOUS,disposable=True)
+            # The earlier image cannot read new academic/notification schemas.
+            # Reject it before restarting or touching the live test databases.
+            before_rollback = {s:fresh.snapshot(s) for s in p.SERVICES}
+            try:
+                with patch('builtins.input',side_effect=AssertionError('Incompatible image reached confirmation')):
+                    p.rollback(fresh,PREVIOUS,disposable=True)
+            except RuntimeError as error:
+                assert 'schema' in str(error).lower()
+            else:
+                raise AssertionError('Incompatible earlier image was accepted')
+            for service in p.SERVICES:
+                p.compare_snapshots(before_rollback[service],fresh.snapshot(service))
             command(sys.executable,'scripts/verify_restore.py')
             fresh = p.Stack(folder/'fresh.env',ROOT/'compose.production.yaml','campus-ci-fresh',disposable=True,image_tag=current)
             p.deploy(fresh)
             command(sys.executable,'scripts/verify_restore.py')
             p.budget(fresh)
-            print('PASS: production profile, memory limits, browser, erased-database recovery, operator restore, real previous-image rollback and forward update')
+            print('PASS: production profile, browser, erased-database recovery, operator restore, incompatible rollback rejection and forward update')
         except Exception:
             # Only this job's synthetic fixtures exist here. Still redact every secret
             # before sharing the private command error in CI (never in the live CLI).

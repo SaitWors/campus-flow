@@ -11,11 +11,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import Request, Query
 from fastapi.responses import Response
 from pydantic import Field, model_validator
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, and_, or_, func
 from services.common.core import database, migrate, setup_app, Input, now, fail, identity, internal, manager, service_secret
-from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event, TitleTranslation, Subject, TimePresets
+from services.schedule.models import Base, Settings, Rule, Occurrence, Audit, Event, TitleTranslation, Subject, TimePresets, Assignment, AssignmentProgress
 from services.schedule.translation import TitleTranslator, with_translation
-from services.schedule.catalog import migrate_catalog, remember_subject, PresetsInput
+from services.schedule.catalog import migrate_catalog, remember_subject, subject_key, PresetsInput
+from services.schedule.academic import (migrate_academics, lesson_data, SubjectDetailsInput,
+    AssignmentInput, AssignmentUpdate, ProgressInput, AssignmentAudienceInput, subject_row, progress_row,
+    assignment_row, assignment_values, assignment_event_data, assignment_visible, is_manager)
 
 engine, DB=database('schedule')
 translator=TitleTranslator(DB)
@@ -23,7 +26,7 @@ DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester
 
 @asynccontextmanager
 async def lifespan(app):
-    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),migrate_catalog))
+    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),migrate_catalog,migrate_academics))
     with DB.begin() as db:
         if not db.get(Settings,1):db.add(Settings(id=1,data=DEFAULT_SETTINGS))
     translator.start()
@@ -46,11 +49,20 @@ def parity(day,config):
 def audit(db,user,action,target,data=None):
     db.add(Audit(actor=user['name'],action=action,target=target,data=data or {}))
 
-def event(db,kind,item):
-    db.add(Event(type=kind,data={'occurrence_id':item.id,'revision':item.revision,'status':item.data['status'],'subgroup':item.data.get('subgroup',0)}))
+SAFE_EVENT_FIELDS=('title','title_en','date','start','end','room','status','subgroup')
+
+def safe_lesson(item):
+    data={**item.data,'date':item.date}
+    return {key:data.get(key,0 if key=='subgroup' else '') for key in SAFE_EVENT_FIELDS}
+
+def event(db,kind,item,before=None):
+    safe_before={key:before.get(key,0 if key=='subgroup' else '') for key in SAFE_EVENT_FIELDS} if before is not None else None
+    db.add(Event(type=kind,data={'occurrence_id':item.id,'revision':item.revision,
+        'status':item.data['status'],'subgroup':item.data.get('subgroup',0),
+        'before':safe_before,'after':safe_lesson(item)}))
 
 def row(item,config,db):
-    d={**item.data,'id':item.id,'rule_id':item.rule_id,'original_date':item.original_date,'date':item.date,'revision':item.revision,'overridden':item.overridden}
+    d={**lesson_data(item.data),'id':item.id,'rule_id':item.rule_id,'original_date':item.original_date,'date':item.date,'revision':item.revision,'overridden':item.overridden,'subject_key':subject_key(item.data['title'])}
     tz=ZoneInfo(config['timezone'])
     for field,key in [('start','starts_at'),('end','ends_at')]:
         d[key]=datetime.fromisoformat(f'{item.date}T{d[field]}').replace(tzinfo=tz).isoformat()
@@ -88,12 +100,10 @@ class LessonInput(Input):
     start:str=Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     end:str=Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     subgroup:int=Field(default=0,ge=0,le=2)
-    queue_enabled:bool=False
     @model_validator(mode='after')
     def valid(self):
         if self.end<=self.start:raise ValueError('end_before_start')
         if self.meeting_url and not self.meeting_url.startswith('https://'):raise ValueError('https_url_required')
-        if self.kind=='lecture' and self.queue_enabled:raise ValueError('lecture_queue_unavailable')
         return self
 
 class RuleInput(LessonInput):
@@ -117,20 +127,22 @@ def generate_rule(db,rule,config,future_only=False):
             wanted.add(d.isoformat())
             oid=str(uuid.uuid5(uuid.NAMESPACE_URL,f'campus-flow:{rule.id}:{d.isoformat()}'))
             item=db.get(Occurrence,oid)
-            content={k:v for k,v in rule.data.items() if k not in ('weekday','parity')}
+            content={k:v for k,v in lesson_data(rule.data).items() if k not in ('weekday','parity')}
             content.update(status='confirmed',demo=bool(rule.data.get('demo',False)))
             if not item and not (future_only and d<today):
                 item=Occurrence(id=oid,rule_id=rule.id,original_date=d.isoformat(),date=d.isoformat(),data=content)
                 db.add(item);db.flush();event(db,'occurrence.created',item)
             elif item and not item.overridden and d>=today and item.data!=content:
-                item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item)
+                before=safe_lesson(item)
+                item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item,before)
         d+=timedelta(days=1)
     db.flush()
     for item in db.scalars(select(Occurrence).where(Occurrence.rule_id==rule.id)):
         if item.original_date not in wanted and (rule.archived or (item.date>=today.isoformat() and not item.overridden)):
             if item.data.get('status')!='cancelled' or not item.data.get('removed_from_template'):
+                before=safe_lesson(item)
                 item.data={**item.data,'status':'cancelled','removed_from_template':True}
-                item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item)
+                item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item,before)
     db.flush()
 
 
@@ -169,7 +181,7 @@ def rules(request:Request):
     with DB() as db:
         items=db.scalars(select(Rule).where(Rule.archived==False)).all()
         items.sort(key=lambda r:(r.data.get('title','').casefold(),r.data.get('weekday',0),r.data.get('start','')))
-        return [{**with_translation(r.data,db),'id':r.id,'revision':r.revision} for r in items]
+        return [{**with_translation(lesson_data(r.data),db),'id':r.id,'revision':r.revision} for r in items]
 
 @app.post('/api/schedule/rules',status_code=201)
 def add_rule(data:RuleInput,request:Request):
@@ -178,7 +190,7 @@ def add_rule(data:RuleInput,request:Request):
         config=settings(db,True).data
         r=Rule(data=data.model_dump(exclude={'revision','preview_token'}));db.add(r);db.flush()
         generate_rule(db,r,config);conflicts(db);remember_subject(db,r.data);audit(db,u,'rule_created',r.id,r.data)
-        return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
+        return {**with_translation(lesson_data(r.data),db),'id':r.id,'revision':r.revision}
 
 @app.put('/api/schedule/rules/{rule_id}')
 def edit_rule(rule_id:str,data:RuleInput,request:Request):
@@ -191,7 +203,7 @@ def edit_rule(rule_id:str,data:RuleInput,request:Request):
         if not hmac.compare_digest(data.preview_token,rule_preview_token(db,r,data,config)):fail('preview_stale',409)
         before=r.data;r.data={**data.model_dump(exclude={'revision','preview_token'}),**({'demo':r.data['demo']} if 'demo' in r.data else {})};r.revision+=1
         generate_rule(db,r,config,future_only=True);conflicts(db);remember_subject(db,r.data);audit(db,u,'rule_updated',r.id,{'before':before,'after':r.data})
-        return {**with_translation(r.data,db),'id':r.id,'revision':r.revision}
+        return {**with_translation(lesson_data(r.data),db),'id':r.id,'revision':r.revision}
 
 @app.delete('/api/schedule/rules/{rule_id}')
 def archive_rule(rule_id:str,request:Request,revision:int):
@@ -241,7 +253,7 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         item.date=data.date.isoformat();item.overridden=True;item.revision+=1;item.updated_at=now()
         db.flush();conflicts(db)
         remember_subject(db,item.data)
-        event(db,'occurrence.cancelled' if data.status=='cancelled' else 'occurrence.updated',item)
+        event(db,'occurrence.cancelled' if data.status=='cancelled' else 'occurrence.updated',item,before)
         audit(db,u,'occurrence_updated',oid,{'before':before,'after':row(item,config,db)})
         return row(item,config,db)
 
@@ -257,17 +269,24 @@ def delete_occurrence(oid:str,request:Request,revision:int):
         before=row(item,config,db)
         item.data={**item.data,'status':'cancelled','removed_from_schedule':True}
         item.overridden=True;item.revision+=1;item.updated_at=now()
-        db.flush();event(db,'occurrence.cancelled',item)
+        db.flush();event(db,'occurrence.cancelled',item,before)
         audit(db,u,'occurrence_deleted',oid,{'before':before})
     return {'ok':True}
 
 @app.get('/api/schedule/events')
 def public_events(request:Request,after:int=Query(default=0,ge=0)):
-    identity(request);return get_events(after)
+    user=identity(request);return get_events(after,user)
 
-def get_events(after):
+def get_events(after,user=None):
     with DB() as db:
-        return [{'seq':e.seq,'id':e.id,'type':e.type,'data':e.data,'at':e.at.isoformat()+'Z'} for e in db.scalars(select(Event).where(Event.seq>after).order_by(Event.seq).limit(200))]
+        query=select(Event).where(Event.seq>after)
+        if user is not None and not is_manager(user):
+            groups=(0,user['subgroup'])
+            query=query.outerjoin(Assignment,Event.data['assignment_id'].as_string()==Assignment.id)
+            query=query.where(or_(~Event.type.like('assignment.%'),and_(
+                Event.data['subgroup'].as_integer().in_(groups),Assignment.subgroup.in_(groups))))
+        return [{'seq':e.seq,'id':e.id,'type':e.type,'data':e.data,'at':e.at.isoformat()+'Z'}
+                for e in db.scalars(query.order_by(Event.seq).limit(200))]
 
 @app.get('/internal/events')
 def internal_events(request:Request,after:int=Query(default=0,ge=0)):
@@ -310,9 +329,9 @@ def seed_demo(request:Request):
         s=settings(db,True)
         if db.scalar(select(Rule).limit(1)):fail('demo_requires_empty_schedule',409)
         # Explicit opt-in, clearly labelled examples, never claimed as MTUCI's schedule.
-        examples=[(0,'09:30','11:05','Высоконагруженные приложения','High-load applications','lecture','all','А-421',False),(0,'11:20','12:55','Высоконагруженные приложения','High-load applications','lab','all','А-308',True),(0,'13:10','14:45','Проектирование информационных систем','Information systems design','practice','all','А-416',False),(1,'09:30','11:05','Технологии баз данных','Database technologies','lecture','all','А-312',False),(1,'11:20','12:55','Технологии баз данных','Database technologies','lab','odd','А-308',True),(2,'11:20','12:55','Распределённые системы','Distributed systems','lab','all','Онлайн',True),(3,'09:30','11:05','Информационная безопасность','Information security','practice','all','А-416',False),(4,'11:20','12:55','Распределённые системы','Distributed systems','lecture','even','А-421',False)]
-        for weekday,start,end,title,title_en,kind,p,room,q in examples:
-            r=Rule(data={'title':title,'title_en':title_en,'kind':kind,'teacher':'Пример преподавателя','room':room,'mode':'remote' if room=='Онлайн' else 'onsite','meeting_url':'','note':'Демонстрационное занятие. Замените реальным расписанием.','start':start,'end':end,'subgroup':0,'queue_enabled':q,'weekday':weekday,'parity':p,'demo':True})
+        examples=[(0,'09:30','11:05','Высоконагруженные приложения','High-load applications','lecture','all','А-421'),(0,'11:20','12:55','Высоконагруженные приложения','High-load applications','lab','all','А-308'),(0,'13:10','14:45','Проектирование информационных систем','Information systems design','practice','all','А-416'),(1,'09:30','11:05','Технологии баз данных','Database technologies','lecture','all','А-312'),(1,'11:20','12:55','Технологии баз данных','Database technologies','lab','odd','А-308'),(2,'11:20','12:55','Распределённые системы','Distributed systems','lab','all','Онлайн'),(3,'09:30','11:05','Информационная безопасность','Information security','practice','all','А-416'),(4,'11:20','12:55','Распределённые системы','Distributed systems','lecture','even','А-421')]
+        for weekday,start,end,title,title_en,kind,p,room in examples:
+            r=Rule(data={'title':title,'title_en':title_en,'kind':kind,'teacher':'Пример преподавателя','room':room,'mode':'remote' if room=='Онлайн' else 'onsite','meeting_url':'','note':'Демонстрационное занятие. Замените реальным расписанием.','start':start,'end':end,'subgroup':0,'weekday':weekday,'parity':p,'demo':True})
             db.add(r);db.flush();generate_rule(db,r,s.data)
         audit(db,u,'demo_created','schedule')
     return {'ok':True}
@@ -326,7 +345,8 @@ def remove_demo(request:Request):
             if r.data.get('demo'):r.archived=True;r.revision+=1
         for item in db.scalars(select(Occurrence)).all():
             if item.data.get('demo'):
-                item.data={**item.data,'status':'cancelled','removed_from_template':True};item.revision+=1;event(db,'occurrence.cancelled',item)
+                before=safe_lesson(item)
+                item.data={**item.data,'status':'cancelled','removed_from_template':True};item.revision+=1;event(db,'occurrence.cancelled',item,before)
         audit(db,u,'demo_removed','schedule')
     return {'ok':True}
 
@@ -348,11 +368,11 @@ def event_head(request:Request):
 
 
 # Guest responses use explicit public fields. Never reuse an authenticated
-# response wholesale: private meeting links, notes, people and queues stay private.
+# response wholesale: private meeting links, notes and people stay private.
 PUBLIC_LESSON_FIELDS = {
     'id', 'title', 'title_en', 'title_en_auto', 'kind', 'room', 'mode',
     'start', 'end', 'subgroup', 'status', 'date', 'starts_at', 'ends_at',
-    'parity', 'demo',
+    'parity', 'demo', 'subject_key',
 }
 PUBLIC_SETTINGS_FIELDS = set(DEFAULT_SETTINGS)
 
@@ -380,10 +400,144 @@ def guest_occurrences(start:date, end:date, subgroup:int=Query(default=0,ge=0,le
 
 @app.get('/api/schedule/subjects')
 def subjects(request:Request):
-    manager(identity(request))
+    identity(request)
     with DB() as db:
-        return [with_translation({'title':s.title,'title_en':s.title_en},db)
+        return [subject_row(s,db)
                 for s in db.scalars(select(Subject).order_by(Subject.title))]
+
+
+@app.get('/api/schedule/subjects/{key}')
+def get_subject(key:str,request:Request):
+    identity(request)
+    with DB() as db:
+        item=db.get(Subject,key)
+        if not item:fail('not_found',404)
+        return subject_row(item,db)
+
+
+@app.patch('/api/schedule/subjects/{key}')
+def update_subject(key:str,data:SubjectDetailsInput,request:Request):
+    user=identity(request);manager(user)
+    with DB.begin() as db:
+        item=db.scalar(select(Subject).where(Subject.key==key).with_for_update())
+        if not item:fail('not_found',404)
+        if item.revision!=data.revision:fail('revision_conflict',409)
+        item.teacher=data.teacher;item.requirements=data.requirements
+        item.links=[link.model_dump() for link in data.links];item.revision+=1
+        audit(db,user,'subject_updated',key,{'revision':item.revision})
+        return subject_row(item,db)
+
+
+@app.get('/api/schedule/assignments')
+def assignments(request:Request,subgroup:int=Query(default=0,ge=0,le=2),subject_key:str=Query(default='',max_length=240)):
+    user=identity(request)
+    if not is_manager(user):
+        if subgroup and subgroup!=user['subgroup']:fail('forbidden',403)
+        subgroup=user['subgroup']
+    with DB() as db:
+        query=(select(Assignment,Subject,AssignmentProgress)
+            .join(Subject,Assignment.subject_key==Subject.key)
+            .outerjoin(AssignmentProgress,and_(AssignmentProgress.assignment_id==Assignment.id,AssignmentProgress.user_id==user['id']))
+            .where(Assignment.archived==False))
+        if subgroup:query=query.where(Assignment.subgroup.in_((0,subgroup)))
+        if subject_key:query=query.where(Assignment.subject_key==subject_key)
+        query=query.order_by(Assignment.due_at.asc().nulls_last(),Assignment.created_at,Assignment.id)
+        return [assignment_row(item,subject,progress) for item,subject,progress in db.execute(query)]
+
+
+@app.post('/api/schedule/assignments',status_code=201)
+def add_assignment(data:AssignmentInput,request:Request):
+    user=identity(request);manager(user)
+    with DB.begin() as db:
+        subject=db.get(Subject,data.subject_key)
+        if not subject:fail('not_found',404)
+        item=Assignment(**assignment_values(data));db.add(item);db.flush()
+        payload=assignment_event_data(item,subject)
+        db.add(Event(type='assignment.created',data=payload))
+        audit(db,user,'assignment_created',item.id,payload)
+        return assignment_row(item,subject)
+
+
+@app.put('/api/schedule/assignments/{aid}')
+def update_assignment(aid:str,data:AssignmentUpdate,request:Request):
+    user=identity(request);manager(user)
+    with DB.begin() as db:
+        item=db.scalar(select(Assignment).where(Assignment.id==aid).with_for_update())
+        if not item or item.archived:fail('not_found',404)
+        if item.revision!=data.revision:fail('revision_conflict',409)
+        subject=db.get(Subject,data.subject_key)
+        if not subject:fail('not_found',404)
+        for key,value in assignment_values(data).items():setattr(item,key,value)
+        item.revision+=1;item.updated_at=now()
+        payload=assignment_event_data(item,subject)
+        db.add(Event(type='assignment.updated',data=payload))
+        audit(db,user,'assignment_updated',aid,payload)
+        progress=db.get(AssignmentProgress,(aid,user['id']))
+        return assignment_row(item,subject,progress)
+
+
+@app.delete('/api/schedule/assignments/{aid}')
+def archive_assignment(aid:str,request:Request,revision:int=Query(ge=1)):
+    user=identity(request);manager(user)
+    with DB.begin() as db:
+        item=db.scalar(select(Assignment).where(Assignment.id==aid).with_for_update())
+        if not item or item.archived:fail('not_found',404)
+        if item.revision!=revision:fail('revision_conflict',409)
+        item.archived=True;item.revision+=1;item.updated_at=now()
+        payload=assignment_event_data(item,db.get(Subject,item.subject_key))
+        db.add(Event(type='assignment.archived',data=payload))
+        audit(db,user,'assignment_archived',aid,payload)
+    return {'ok':True}
+
+
+@app.put('/api/schedule/assignments/{aid}/progress')
+def update_progress(aid:str,data:ProgressInput,request:Request):
+    user=identity(request)
+    with DB.begin() as db:
+        # Lock the parent even on first save; a missing progress row cannot be
+        # row-locked, and concurrent revision=0 requests must not both succeed.
+        item=db.scalar(select(Assignment).where(Assignment.id==aid).with_for_update())
+        if not item or item.archived or not assignment_visible(item,user):fail('not_found',404)
+        progress=db.get(AssignmentProgress,(aid,user['id']))
+        if (progress.revision if progress else 0)!=data.revision:fail('revision_conflict',409)
+        if progress is None:
+            progress=AssignmentProgress(assignment_id=aid,user_id=user['id'],status=data.status,revision=1)
+            db.add(progress)
+        else:
+            progress.status=data.status;progress.revision+=1;progress.updated_at=now()
+        # Personal progress never produces a public event or shared audit row.
+        return progress_row(progress)
+
+
+@app.get('/internal/assignments/reminders')
+def assignment_reminders(request:Request):
+    internal(request)
+    stamp=now()
+    with DB() as db:
+        upcoming=db.execute(select(Assignment,Subject)
+            .join(Subject,Assignment.subject_key==Subject.key)
+            .where(Assignment.archived==False,Assignment.due_at>=stamp,Assignment.due_at<=stamp+timedelta(hours=24))
+            .order_by(Assignment.due_at,Assignment.id)).all()
+        if not upcoming:return []
+        completed={item.id:[] for item,subject in upcoming}
+        for aid,uid in db.execute(select(AssignmentProgress.assignment_id,AssignmentProgress.user_id)
+            .where(AssignmentProgress.assignment_id.in_(completed),AssignmentProgress.status=='done')
+            .order_by(AssignmentProgress.user_id)):
+            completed[aid].append(uid)
+        return [{**{('id' if key=='assignment_id' else key):value
+                    for key,value in assignment_event_data(item,subject).items()},
+                 'completed_user_ids':completed[item.id]} for item,subject in upcoming]
+
+
+@app.post('/internal/assignments/audiences')
+def assignment_audiences(data:AssignmentAudienceInput,request:Request):
+    internal(request)
+    if not data.ids:return {'items':[]}
+    with DB() as db:
+        items=db.execute(select(Assignment.id,Assignment.subgroup,Assignment.archived,Assignment.revision)
+            .where(Assignment.id.in_(data.ids)).order_by(Assignment.id))
+        return {'items':[{'id':item.id,'subgroup':item.subgroup,'archived':item.archived,
+                          'revision':item.revision} for item in items]}
 
 
 @app.get('/api/schedule/time-presets')
@@ -418,7 +572,7 @@ def rule_preview_token(db,rule,data,config):
 
 
 def preview_item(item):
-    return {'id':item.id,'date':item.date,**item.data}
+    return {'id':item.id,'date':item.date,**lesson_data(item.data)}
 
 
 @app.post('/api/schedule/rules/{rule_id}/preview')

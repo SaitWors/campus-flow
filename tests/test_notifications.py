@@ -28,6 +28,8 @@ def service(tmp_path, monkeypatch):
     monkeypatch.setenv('VAPID_SUBJECT','mailto:operator@example.test')
     monkeypatch.setenv('PUSH_ENABLED','true')
     monkeypatch.setenv('NOTIFICATION_WORKER','false')
+    monkeypatch.delenv('TELEGRAM_BOT_TOKEN',raising=False)
+    monkeypatch.delenv('TELEGRAM_BOT_USERNAME',raising=False)
     from services.notifications import main as m
     engine, db = database('notifications')
     monkeypatch.setattr(m,'engine',engine)
@@ -42,10 +44,15 @@ def service(tmp_path, monkeypatch):
     def auth(path, **kwargs):
         if path=='/internal/notification-recipients':return list(members.values())
         if path=='/internal/question-recipients':return [u for u in members.values() if u['role'] in ('admin','head','deputy')]
-        if path=='/internal/push-check':return {**members[kwargs['json']['user_id']],**status}
+        if path=='/internal/push-check':return {**members[kwargs['json']['user_id']],**status,'expires_at':(now()+timedelta(days=3)).isoformat()+'Z'}
+        if path=='/internal/notification-check':return {**members[kwargs['json']['user_id']],'active':members[kwargs['json']['user_id']].get('active',True)}
         raise AssertionError(path)
     monkeypatch.setattr(m,'identity',identity)
     monkeypatch.setattr(m,'auth',auth)
+    def remote(base,path,**kwargs):
+        if path=='/internal/assignments/audiences':return {'items':[{'id':i,'subgroup':1,'archived':False,'revision':1} for i in kwargs['json']['ids']]}
+        raise AssertionError(path)
+    monkeypatch.setattr(m,'remote',remote)
     with TestClient(m.app) as client:
         yield m,client,members,status
     engine.dispose()
@@ -97,7 +104,9 @@ def test_reads_preferences_and_private_devices(service):
     assert client.post('/api/notifications/subscriptions',json=data,headers=headers(OTHER)).status_code==409
     assert client.delete('/api/notifications/subscriptions/'+sid,headers=headers(OTHER)).status_code==404
     devices=client.get('/api/notifications/subscriptions',headers=headers()).json()
-    assert set(devices[0])=={'id','label','updated_at'}
+    assert set(devices[0])=={'id','label','updated_at','expires_at','active'}
+    assert devices[0]['active'] and devices[0]['expires_at']
+    assert 'queue' not in client.get('/api/notifications/preferences',headers=headers()).json()
     assert 'private' not in str(client.get('/api/notifications/config',headers=headers()).json())
     pref=client.get('/api/notifications/preferences',headers=headers()).json()
     updated={**pref,'important_popups':False,'schedule':False}
@@ -159,7 +168,7 @@ def test_delivery_privacy_retries_revocation_and_gone(service,monkeypatch):
     with m.DB() as db:assert not db.get(Subscription,sid)
 
 
-def test_muted_expired_and_finished_calls_are_not_pushed(service,monkeypatch):
+def test_muted_and_expired_notifications_are_not_pushed(service,monkeypatch):
     m,client,_,_=service
     subscribe(client)
     publish(client)
@@ -172,11 +181,6 @@ def test_muted_expired_and_finished_calls_are_not_pushed(service,monkeypatch):
     with m.DB.begin() as db:
         d=db.scalar(select(Delivery));d.due_at=now()-timedelta(seconds=1)
         db.get(Notification,d.notification_id).expires_at=now()-timedelta(seconds=1)
-    m.deliver_one();assert not sent
-    monkeypatch.setattr(m,'quiet',lambda _:False)
-    with m.DB.begin() as db:
-        m.notify(db,STUDENT,'call:test','queue',{'title':'Your turn','body':'Call','entry_id':'entry','route':'#queues'},now()+timedelta(minutes=5))
-    monkeypatch.setattr(m,'remote',lambda *args,**kw:{'active':False})
     m.deliver_one();assert not sent
 
 
@@ -287,3 +291,181 @@ def test_question_limits_and_input_validation(service):
         r=client.post('/api/notifications/questions',json=body,headers={**headers(),'Idempotency-Key':'limit-question-key-'+str(n)})
         assert r.status_code==201,r.text
     assert client.post('/api/notifications/questions',json=body,headers={**headers(),'Idempotency-Key':'limit-question-key-6'}).status_code==429
+
+
+def test_grouped_schedule_changes_are_specific_and_private(service,monkeypatch):
+    m,client,_,_=service
+    before={'title':'Calculus','title_en':'Calculus','date':'2026-10-08','start':'09:00','end':'10:30','room':'101','status':'active','subgroup':1,'note':'SECRET NOTE','meeting_url':'https://secret.test'}
+    after={**before,'date':'2026-10-09','start':'11:00','end':'12:30','room':'305'}
+    events=[{'seq':1,'id':'move','type':'occurrence.updated','data':{'before':before,'after':after,'subgroup':1},'at':now().isoformat()+'Z'},
+            {'seq':2,'id':'new','type':'occurrence.created','data':{'after':{**after,'title':'Physics','subgroup':2},'subgroup':2},'at':now().isoformat()+'Z'}]
+    monkeypatch.setattr(m,'remote',lambda base,path,**kw:{'seq':0} if path.endswith('/head') else events)
+    m.consume('schedule');m.consume('schedule')
+    items=client.get('/api/notifications/inbox',headers=headers()).json()['items']
+    assert len(items)==1
+    text=json.dumps(items,ensure_ascii=False)
+    for detail in ('Calculus','2026-10-08','2026-10-09','09:00','11:00','101','305'):assert detail in text
+    assert 'Physics' not in text and 'SECRET' not in text and 'secret.test' not in text
+    # An account changing subgroup loses access to old subgroup-specific details.
+    service[2][STUDENT['id']]['subgroup']=2
+    assert not client.get('/api/notifications/inbox',headers=headers()).json()['items']
+
+
+def test_assignment_events_and_deadline_reminders_skip_completed(service,monkeypatch):
+    m,client,_,_=service
+    due=(now()+timedelta(hours=4)).isoformat()+'Z'
+    data={'assignment_id':'work-1','title':'Lab 3','subject_title':'Physics','due_at':due,'subgroup':1,'revision':1}
+    events=[{'seq':1,'id':'work-created','type':'assignment.created','data':data,'at':now().isoformat()+'Z'}]
+    reminders=[{'id':'work-1',**data,'completed_user_ids':[STUDENT['id']]}]
+    def remote(base,path,**kw):
+        if path.endswith('/head'):return {'seq':0}
+        if path=='/internal/assignments/reminders':return reminders
+        if path=='/internal/assignments/audiences':return {'items':[{'id':'work-1','subgroup':1,'archived':False,'revision':1}]}
+        return events
+    monkeypatch.setattr(m,'remote',remote)
+    m.consume('schedule');m.consume('schedule');m.assignment_reminders();m.assignment_reminders()
+    own=client.get('/api/notifications/inbox',headers=headers()).json()['items']
+    assert len(own)==1 and own[0]['category']=='assignments' and own[0]['route']=='#assignments'
+    assert 'Lab 3' in own[0]['body'] and 'Physics' in own[0]['body']
+    admin=client.get('/api/notifications/inbox',headers=AUTH).json()['items']
+    assert len(admin)==2 and any(i.get('reminder') for i in admin)
+    assert not client.get('/api/notifications/inbox',headers=headers(OTHER)).json()['items']
+
+
+def test_inbox_sql_paginates_visible_rows_and_read_counts(service,monkeypatch):
+    m,client,_,_=service
+    with m.DB.begin() as db:
+        for n in range(95):
+            m.notify(db,STUDENT,'bulk:'+str(n),'announcements',{'title':'Update '+str(n),'body':'Visible','route':'#notifications','important':n<5,'audience':'all' if n<65 else 'managers'},now()+timedelta(days=1))
+    from sqlalchemy import event
+    queries=[]
+    event.listen(m.engine,'before_cursor_execute',lambda conn,cursor,statement,params,context,many:queries.append(statement))
+    first=client.get('/api/notifications/inbox',headers=headers()).json()
+    second=client.get('/api/notifications/inbox?offset=30',headers=headers()).json()
+    assert (first['total'],first['unread'],len(first['items']),len(first['popups']))==(65,65,30,3)
+    selects=[q for q in queries if 'FROM notifications' in q and q.lstrip().startswith('SELECT')]
+    assert selects and all('LIMIT' in q or 'count(' in q or 'DISTINCT' in q for q in selects)
+    assert not set(i['id'] for i in first['items']) & set(i['id'] for i in second['items'])
+    client.post('/api/notifications/read',json={'before':first['as_of']},headers=headers())
+    assert client.get('/api/notifications/inbox?unread_only=true',headers=headers()).json()['total']==0
+    with m.DB() as db:
+        # Bulk mark-read must not touch rows that the user cannot see.
+        assert db.scalar(select(func.count()).select_from(Notification).where(Notification.read_at==None))==30
+
+
+def test_notification_schema3_removes_legacy_queue_data(service):
+    m,client,_,_=service
+    from sqlalchemy import text
+    with m.DB.begin() as db:
+        db.add(Preference(user_id=STUDENT['id'],data={**DEFAULTS,'queue':False}))
+        legacy=Notification(user_id=STUDENT['id'],source_key='legacy',category='queue',data={'route':'#queues'},expires_at=now()+timedelta(days=1))
+        db.add(legacy);db.flush()
+        db.add(Delivery(notification_id=legacy.id,subscription_id='old'))
+        db.add(Cursor(source='queue',seq=10))
+        db.execute(text('DELETE FROM schema_migrations WHERE version=3'))
+    m.migrate(m.engine,m.Base,(m.migrate_questions,m.tg.migrate_notifications))
+    with m.DB() as db:
+        assert db.scalar(text('SELECT MAX(version) FROM schema_migrations'))==3
+        assert 'queue' not in db.get(Preference,STUDENT['id']).data
+        assert db.scalar(select(func.count()).select_from(Notification))==0
+        assert db.scalar(select(func.count()).select_from(Delivery))==0
+        assert db.get(Cursor,'queue') is None
+    pref=client.get('/api/notifications/preferences',headers=headers()).json()
+    assert pref['assignments'] is True and pref['telegram_enabled'] is False
+
+
+def test_device_expiry_and_activity_are_private_and_session_scoped(service):
+    m,client,_,status=service
+    sid,_=subscribe(client)
+    subscribe(client,user=OTHER,suffix='other-owner')
+    status['active']=False
+    own=client.get('/api/notifications/subscriptions',headers=headers()).json()
+    assert len(own)==1 and own[0]['id']==sid and own[0]['active'] is False
+    assert own[0]['expires_at'] and not any(k in own[0] for k in ('endpoint','session_hash','user_id'))
+
+
+def test_manual_push_test_bypasses_muted_category_and_quiet_hours_only_for_push(service,monkeypatch):
+    m,client,_,_=service
+    sid,_=subscribe(client)
+    pref=client.get('/api/notifications/preferences',headers=headers()).json()
+    client.put('/api/notifications/preferences',json={**pref,'announcements':False,'quiet_enabled':True},headers=headers())
+    monkeypatch.setattr(m,'quiet',lambda _:True)
+    publish(client)
+    assert not m.deliver_one()
+    r=client.post('/api/notifications/test',json={},headers=headers())
+    assert r.status_code==200,r.text
+    sent=[]
+    monkeypatch.setattr(m,'send',lambda *args:sent.append(args) or 201)
+    assert m.deliver_one() and len(sent)==1
+    with m.DB() as db:
+        assert db.scalar(select(func.count()).select_from(m.tg.TelegramDelivery))==0
+        assert db.scalar(select(Delivery)).state=='sent'
+    # Other alerts must continue to obey quiet hours after the manual test.
+    pref=client.get('/api/notifications/preferences',headers=headers()).json()
+    client.put('/api/notifications/preferences',json={**pref,'announcements':True},headers=headers())
+    publish(client,{**PUBLISH,'title':'Quiet update'},key={'Idempotency-Key':'quiet-after-test-000001'})
+    assert m.deliver_one() and len(sent)==1
+
+
+def test_current_assignment_audience_revokes_old_inbox_counts_reads_and_push(service,monkeypatch):
+    m,client,members,_=service
+    subscribe(client)
+    audience={'subgroup':1,'archived':False,'revision':1}
+    requests=[]
+    def remote(base,path,**kwargs):
+        assert path=='/internal/assignments/audiences' and kwargs['method']=='POST'
+        requests.append(kwargs['json']['ids'])
+        return {'items':[{'id':'work-current',**audience}]}
+    monkeypatch.setattr(m,'remote',remote)
+    with m.DB.begin() as db:
+        item=m.notify(db,STUDENT,'work:old','assignments',{'title':'Old work','body':'Private work metadata','assignment_id':'work-current','audience':'all','route':'#assignments'},now()+timedelta(days=1))
+        nid=item.id
+    assert client.get('/api/notifications/inbox',headers=headers()).json()['unread']==1
+    audience.update(subgroup=2,revision=2)
+    revoked=client.get('/api/notifications/inbox',headers=headers()).json()
+    assert revoked['items']==[] and revoked['total']==0 and revoked['unread']==0
+    client.post('/api/notifications/read',json={'ids':[nid]},headers=headers())
+    with m.DB() as db:assert db.get(Notification,nid).read_at is None
+    sent=[];monkeypatch.setattr(m,'send',lambda *args:sent.append(args) or 201)
+    assert m.deliver_one() and not sent
+    # Current managerial access works, then disappears after losing the role.
+    members[STUDENT['id']]['role']='head'
+    assert client.get('/api/notifications/inbox',headers=headers()).json()['total']==1
+    members[STUDENT['id']]['role']='student'
+    assert client.get('/api/notifications/inbox',headers=headers()).json()['total']==0
+    assert requests and all(len(ids)<=200 for ids in requests)
+
+
+def test_current_assignment_audiences_use_bounded_batches_and_support_archive_notice(service,monkeypatch):
+    m,client,_,_=service
+    requests=[]
+    def remote(base,path,**kwargs):
+        assert path=='/internal/assignments/audiences'
+        ids=kwargs['json']['ids'];requests.append(ids)
+        return {'items':[{'id':i,'subgroup':1,'archived':i=='archived','revision':2} for i in ids if i!='missing']}
+    monkeypatch.setattr(m,'remote',remote)
+    with m.DB.begin() as db:
+        for n in range(401):
+            m.notify(db,STUDENT,'work:'+str(n),'assignments',{'title':'Work','body':'Details','assignment_id':'assignment-'+str(n),'audience':'subgroup1','route':'#assignments'},now()+timedelta(days=1))
+        for aid,archived in [('archived',True),('archived',False),('missing',False)]:
+            m.notify(db,STUDENT,'archive:'+aid+':'+str(archived),'assignments',{'title':'Archive','body':'Removed','assignment_id':aid,'assignment_archived':archived,'audience':'subgroup1','route':'#assignments'},now()+timedelta(days=1))
+    response=client.get('/api/notifications/inbox',headers=headers()).json()
+    assert response['total']==402 and response['unread']==402
+    assert len(requests)==3 and sorted(len(ids) for ids in requests)==[3,200,200]
+    assert not any(i.get('assignment_id')=='missing' or (i.get('assignment_id')=='archived' and not i.get('assignment_archived')) for i in response['items'])
+
+
+def test_event_consumption_uses_current_assignment_audience_and_allows_archives(service,monkeypatch):
+    m,client,_,_=service
+    events=[{'id':'stale-work','seq':1,'at':now().isoformat()+'Z','type':'assignment.updated','data':{'assignment_id':'moved','title':'Moved work','subject_title':'Physics','subgroup':1,'revision':1,'due_at':None}},
+            {'id':'archive-work','seq':2,'at':now().isoformat()+'Z','type':'assignment.archived','data':{'assignment_id':'archived','title':'Archived work','subject_title':'Physics','subgroup':1,'revision':2,'due_at':None}}]
+    def remote(base,path,**kwargs):
+        if path.endswith('/head'):return {'seq':0}
+        if path=='/internal/assignments/audiences':return {'items':[{'id':'moved','subgroup':2,'archived':False,'revision':2},{'id':'archived','subgroup':1,'archived':True,'revision':2}]}
+        return events
+    monkeypatch.setattr(m,'remote',remote)
+    m.consume('schedule');m.consume('schedule')
+    own=client.get('/api/notifications/inbox',headers=headers()).json()['items']
+    other=client.get('/api/notifications/inbox',headers=headers(OTHER)).json()['items']
+    assert len(own)==1 and own[0]['assignment_id']=='archived' and own[0]['assignment_archived']
+    assert len(other)==1 and other[0]['assignment_id']=='moved'

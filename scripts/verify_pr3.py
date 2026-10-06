@@ -33,12 +33,12 @@ def run(urls):
         admin.request('PATCH','/api/auth/users/'+other.user['id'],{'role':'head','status':'active','subgroup':1})
         for path in ('subjects','time-presets'):
             guest.request('GET','/api/schedule/'+path,expected=401)
-            student.request('GET','/api/schedule/'+path,expected=403)
+            student.request('GET','/api/schedule/'+path,expected=200 if path=='subjects' else 403)
         presets=admin.request('GET','/api/schedule/time-presets')
         assert [(s['start'],s['end']) for s in presets['items']]==[('09:30','11:00'),('11:15','12:45'),('13:00','14:30'),('15:10','16:40'),('16:55','18:25')]
         config=admin.request('GET','/api/schedule/settings')
         today=date.today();weekday=(today.weekday()+3)%7
-        body={'title':'Математический анализ PR3','title_en':'PR3 Mathematical analysis','kind':'lab','teacher':'PRIVATE TEACHER PR3','room':'PR3 421','mode':'remote','meeting_url':'https://example.test/private-meeting-pr3','note':'PRIVATE NOTE PR3','start':'18:30','end':'19:00','subgroup':1,'queue_enabled':True,'weekday':weekday,'parity':'all','revision':0}
+        body={'title':'Математический анализ PR3','title_en':'PR3 Mathematical analysis','kind':'lab','teacher':'PRIVATE TEACHER PR3','room':'PR3 421','mode':'remote','meeting_url':'https://example.test/private-meeting-pr3','note':'PRIVATE NOTE PR3','start':'18:30','end':'19:00','subgroup':1,'weekday':weekday,'parity':'all','revision':0}
         rule=admin.request('POST','/api/schedule/rules',body,expected=201)
         second=admin.request('POST','/api/schedule/rules',{**body,'title':'  МАТЕМАТИЧЕСКИЙ  АНАЛИЗ PR3 ','subgroup':2},expected=201)
         admin.request('POST','/api/schedule/rules',{**body,'subgroup':0},expected=409)
@@ -61,7 +61,7 @@ def run(urls):
         matching=[i for i in all_before if i['rule_id']==rule['id']]
         future=[i for i in matching if i['date']>=today.isoformat()]
         assert len(future)>=2
-        fields=('title','title_en','kind','teacher','room','mode','meeting_url','note','start','end','subgroup','queue_enabled','date','status','revision')
+        fields=('title','title_en','kind','teacher','room','mode','meeting_url','note','start','end','subgroup','date','status','revision')
         exception=admin.request('PATCH','/api/schedule/occurrences/'+future[0]['id'],{**{k:future[0][k] for k in fields},'room':'Individual room'})
         edit={**body,'revision':rule['revision'],'room':'Changed room'}
         admin.request('PUT','/api/schedule/rules/'+rule['id'],edit,expected=409)
@@ -153,4 +153,4 @@ def run(urls):
 
 
 if __name__=='__main__':
-    run({k:'http://localhost:8080' for k in ('auth','schedule','queue','notifications')})
+    run({k:'http://localhost:8080' for k in ('auth','schedule','notifications')})

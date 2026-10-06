@@ -1,87 +1,33 @@
 # Architecture
 
-PR3 adds a standalone `compose.production.yaml` for small hosts: the four API/database ownership boundaries remain, while four databases and distinct non-superuser roles share one PostgreSQL instance. Application images use verified commit tags; translation is disabled in this profile. See [production operations](DEPLOY_TIMEWEB40_RU.md). The original development topology below remains supported.
+Campus Flow has three independently owned APIs. Services authenticate internal requests with `INTERNAL_TOKEN` and never query another service's database. The gateway exposes only same-origin `/api/auth`, `/api/schedule` and `/api/notifications`; `/internal` is private. Production runs web, three APIs and one PostgreSQL instance with three isolated non-superuser roles/databases. Development Compose runs three separate PostgreSQL instances and optionally the offline translation model.
 
-Version 1.0.0 targets one academic group with two subgroups. Roles and registration belong to that installation. Multi-university tenancy and arbitrary numbers of subgroups are not implemented.
-
-```mermaid
-flowchart TD
-  B["Browser · React"] --> G["Nginx gateway"]
-  G --> A["Identity API"]
-  G --> S["Schedule API"]
-  G --> Q["Queue API"]
-  A --> AD["Identity PostgreSQL"]
-  S --> SD["Schedule PostgreSQL"]
-  Q --> QD["Queue PostgreSQL"]
-  S -->|"Verify session"| A
-  Q -->|"Verify session and member"| A
-  Q -->|"Read class and events"| S
-```
-
-## Services and ownership
-
-| Service | Data it owns | Responsibilities |
+| Owner | Data | Invariants |
 | --- | --- | --- |
-| auth | users, sessions, invitations, reset codes, audit, rate gates | Argon2 passwords; opaque cookie sessions; approval; roles; CSRF; invite/reset consumption |
-| schedule | settings, rules, occurrences, audit, events | Academic parity; recurring lessons; stable occurrence IDs; exceptions; conflict validation; ICS |
-| queue | queues, entries, command keys, audit, event cursor | Order and capacity; one active entry per student/queue; one called entry per queue and per student; expiry and reconciliation |
-| web | compiled frontend assets | Same-origin API routing, request size limit, browser response headers |
+| auth, schema 3 | Members, invitations, roles, sessions, TOTP/recovery, audit | Active account, password/MFA checks, CSRF, single-use recovery, session revocation |
+| schedule, schema 4 | Semester, templates, occurrences, subject details, time presets, assignments, personal progress, events, translations | Timezone-aware instants, conflicts, revisions, manager edits, subgroup access, private progress |
+| notifications, schema 3 | Inbox, preferences, announcements, questions, push subscriptions/VAPID, Telegram links/bindings/delivery, cursors | Recipient ownership, live audience checks, quiet hours, privacy, durable retries |
 
-The services never connect to another service's database. Each database is placed on a separate internal Docker network, accessible only by its owning API. Only the web gateway port is published. The APIs share a private service network and an internal authentication token; the gateway strips client-supplied internal tokens and denies `/internal/` routes.
+## Consistency
 
-The four PostgreSQL containers can be consolidated into a managed PostgreSQL deployment with separate databases and roles later. Their logical ownership must remain separate.
+Schedule writes and their event records commit in one transaction. Readers use durable sequence cursors. Event metadata contains a safe before/after projection of lesson title, date, time, room, status and subgroup; private notes and meeting links are excluded. Assignment events include only delivery metadata. Member event filtering happens before pagination and also checks the current assignment audience.
 
-## Time and schedule
+Mutations require the current revision and return 409 on concurrent changes. Personal progress is keyed by assignment and authenticated member, and protected by a unique key for the first-write race. Managers cannot retrieve another member's progress. Internal reminder metadata is available only to notifications; it excludes already-completed recipients.
 
-Dates are represented as ISO calendar dates in the configured semester timezone. Start/end instants include a timezone offset. Week parity uses a reference Monday and reference parity, independent of ISO week numbering. PostgreSQL audit timestamps are stored as naive UTC and serialized with a `Z` suffix.
+The notification worker groups committed timetable changes, persists inbox and delivery jobs with cursor advancement, and rechecks account/audience/delivery state before sending. Web Push is tied to a verified browser session. Telegram uses an explicit one-time private-chat binding and checks active membership independently of browser session lifetime. Delivery leases and bounded retries survive restarts; an external transport timeout can still produce a duplicate after uncertain delivery.
 
-Rule edits generate the semester's occurrences. Each occurrence ID is a deterministic UUID of the rule ID and original date. Moving an occurrence updates its displayed date while retaining its ID and original date. Individual overrides are preserved during later rule changes. Normal past occurrences are not rewritten by template changes.
+## Runtime and frontend
 
-Schedule mutations lock the settings singleton to serialize conflict checks and generation. Optimistic revision fields reject stale editors. Cancelled occurrences do not participate in conflict checks. Different subgroups may overlap; whole-group classes cannot overlap either subgroup.
+Internal HTTP calls reuse a bounded keep-alive connection pool. Database pools in production allow two retained plus two overflow connections per API. Inbox and academic audiences are filtered in SQL. The unused fourth API, its event worker, database initialization, proxy and polling are removed.
 
-## Queue consistency
+The web shell loads larger sections on demand. Today shows an active/upcoming class and personal deadlines; schedule preserves day/week/month filters per account on the device. Mobile navigation prioritizes the daily sections and groups secondary sections under More. Background refresh stops when the page is hidden.
 
-Queue writes lock the queue row with `SELECT ... FOR UPDATE`. Partial unique indexes independently enforce active-entry/called-entry invariants. Last-place races are resolved under the same lock that counts active entries and assigns the next ticket.
+Public guest APIs, calendar subscription and explicitly saved offline data expose only public schedule fields. Private HTML/API responses are not persisted by the Service Worker. Public subject keys and assignment details are not added to guest responses.
 
-Commands require an `Idempotency-Key`, scoped to user, queue and request key. A fingerprint prevents reuse with different arguments. A successfully replayed command returns current queue state. It does not recreate an entry after a subsequent leave. Manager mutations also require the current queue revision; repeated completed commands are recognized before revision validation.
+## Operations
 
-Schedule events are written in the same transaction as a schedule change. The queue worker reads them with a persistent sequence cursor, polls every three seconds after each processing cycle and also checks non-closed queues for expiry. It tolerates retries. Queue details reconcile state synchronously; critical commands fetch the current lesson and fail when the upstream service is unavailable. There is no Kafka/RabbitMQ broker and no distributed transaction. A concurrent lesson edit may race an already-running queue command; reconciliation resolves that window. Three seconds is a normal polling interval, not a guaranteed end-to-end SLA during outages or backlogs.
+Images are tagged by full commit SHA, with exact supported schema metadata. Deployment checks metadata before maintenance and backs up existing databases. An older incompatible image is rejected before mutation. Dumps are compared by table/row digest before schema upgrades; migrations are idempotent.
 
-## Authentication
+New backups contain three active databases. Existing four-database backups are verified in full, while only active databases are restored. Retired volumes are preserved. The external backup command checks a private archive, transfers it using SSH with pinned host verification, checks remote SHA-256, then atomically publishes it. A systemd timer template schedules daily copies; operators supply the destination and retention policy.
 
-Session cookies are HttpOnly and SameSite=Lax; production HTTPS deployments enable Secure through `COOKIE_SECURE=true`. API mutations verify a per-session CSRF token, and the middleware validates supplied Origin / Sec-Fetch-Site headers. Passwords use Argon2. Setup, login, registration and reset requests are rate-limited using persistent database counters.
-
-Active status and role are checked through the identity service, without long-lived role-bearing JWTs. Blocking an account and resetting/changing its password revoke existing sessions. Invite/reset tokens are hashed in storage; raw codes are returned only at creation. Email sending, SSO, MFA and an automated verification of university membership are not connected. Managers verify applicants manually.
-
-## Deployment and schema evolution
-
-Compose waits for database and API healthchecks. Readiness checks issue a database query. API images run as an unprivileged user with a read-only root filesystem; databases persist in named volumes. Nginx supplies the only public listener. Internet-facing deployment requires a TLS proxy and an exact configured origin.
-
-Schema version 1 is created on first launch under a PostgreSQL advisory lock. The app refuses databases with a schema version above 1. This is an initial migration, not a general-purpose migration framework. Future schema changes need explicit versioned migrations and a tested backup/restore procedure; modifying SQLAlchemy models alone is insufficient.
-
-SQLite is available only for local development and smoke tests. It serializes transactions using `BEGIN IMMEDIATE` and is not a substitute for the PostgreSQL concurrency gate in CI.
-
-## Extension points
-
-- REST/OpenAPI per service.
-- Cursor-based schedule events for an external bot or sync worker.
-- Authenticated iCalendar snapshot export.
-- Future notifications should use a dedicated service and delivery queue, storing delivery retries separately from lab queue transactions.
-- Multi-group support would require group membership and access scoping in every service; it is not just a new frontend filter.
-
-
-## Local title translation
-
-Schedule owns the title_translations cache (schema v2) and its background worker. LibreTranslate v1.9.6 runs on an internal network shared solely with schedule, without published ports or runtime internet access. Models are installed during image build. Computed title_en_auto is separate from manual title_en; inference does not change lesson revisions or queue events. See [AUTO_TRANSLATION_RU.md](AUTO_TRANSLATION_RU.md).
-
-## Notifications service (PR2)
-
-notifications owns its PostgreSQL inbox, preferences, subscriptions, announcements, VAPID keys and delivery outbox. It consumes committed schedule and queue events using persistent cursors. Queue schema 2 adds directed call events; source commands serialize sequence allocation with commit order. Notifications are created with the cursor in one transaction. Delivery leases and stable device tags support restart/retry; session and audience checks happen immediately before sending.
-
-The frontend is an installable PWA with a Service Worker for Web Push and a network-only offline fallback. API data is never cached in the worker. Four database backup/restore scripts include the notification keys.
-
-See [notification API and threat boundaries](NOTIFICATIONS_RU.md) and [deployment](DEPLOY_FRIEND_RU.md). The translator is now an optional Compose profile with a pinned RU → EN package, resumable download and integrity verification.
-
-## Community access
-
-Auth owns the optional administrator group_role (schema 2). Schedule serves two explicit guest GET routes using a public-field allowlist; private authenticated responses are never serialized wholesale for guests. Notifications also owns questions and question_messages (schema 2): access is by owner/recipient relationship plus the recipient's current staff role. Other administrators have no automatic conversation access. New-message notification creation shares the message transaction. [Access model and API](GUEST_QUESTIONS_ROLES_RU.md).
+See [study hub and update](STUDY_HUB_RU.md), [notifications](NOTIFICATIONS_RU.md) and [production operations](DEPLOY_TIMEWEB40_RU.md).

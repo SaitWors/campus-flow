@@ -1,6 +1,6 @@
 """Notification data is owned only by this service. Private keys and capabilities never leave its API."""
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from services.common.core import now, uid
 
@@ -58,6 +58,7 @@ class Subscription(Base):
     session_hash: Mapped[str] = mapped_column(String(64))
     label: Mapped[str] = mapped_column(String(60))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Delivery(Base):
@@ -91,6 +92,52 @@ class PushKey(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     private_key: Mapped[str] = mapped_column(String(500))
     public_key: Mapped[str] = mapped_column(String(100))
+
+
+class TelegramLink(Base):
+    __tablename__ = 'telegram_links'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    bot_id: Mapped[str] = mapped_column(String(24))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TelegramBinding(Base):
+    __tablename__ = 'telegram_bindings'
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    bot_id: Mapped[str] = mapped_column(String(24))
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    chat_label: Mapped[str] = mapped_column(String(80))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_error: Mapped[str] = mapped_column(String(32), default='')
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class TelegramDelivery(Base):
+    __tablename__ = 'telegram_deliveries'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    notification_id: Mapped[str] = mapped_column(String(36), index=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
+    state: Mapped[str] = mapped_column(String(16), default='pending')
+    __table_args__ = (UniqueConstraint('notification_id', 'user_id'),)
+
+
+class TelegramState(Base):
+    __tablename__ = 'telegram_state'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    bot_id: Mapped[str] = mapped_column(String(24))
+    offset: Mapped[int] = mapped_column(BigInteger, default=0)
+    due_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    lease_until: Mapped[datetime] = mapped_column(DateTime, default=now)
+    send_after: Mapped[datetime] = mapped_column(DateTime, default=now)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(String(32), default='')
 
 
 class Question(Base):

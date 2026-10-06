@@ -12,7 +12,7 @@ if [[ ! -f .env ]]; then
         echo 'HTTP_PORT=8080'
         echo 'BIND_ADDRESS=127.0.0.1'
         echo 'COOKIE_SECURE=false'
-        for key in INTERNAL_TOKEN SETUP_KEY AUTH_DB_PASSWORD SCHEDULE_DB_PASSWORD QUEUE_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD; do
+        for key in INTERNAL_TOKEN SETUP_KEY AUTH_DB_PASSWORD SCHEDULE_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD; do
             secret=$(openssl rand -hex 32)
             printf '%s=%s\n' "$key" "$secret"
         done
@@ -26,6 +26,6 @@ if ! grep -q '^NOTIFICATIONS_DB_PASSWORD=' .env; then
     printf '\nNOTIFICATIONS_DB_PASSWORD=%s\n' "$notification_secret" >> .env
 fi
 docker compose version
-docker compose up --build -d --wait --wait-timeout 180
+docker compose up --build -d --wait --wait-timeout 180 --remove-orphans
 echo 'Open APP_ORIGIN from .env (default http://localhost:8080).'
 echo 'First account: copy SETUP_KEY from .env into the first-run form.'

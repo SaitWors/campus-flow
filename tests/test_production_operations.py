@@ -40,16 +40,32 @@ def test_wrong_totp_key_and_newer_schema_are_rejected(tmp_path):
         p.verify_backup(folder, 'test-internal-key')
 
 
-def test_backup_failure_resumes_only_previously_running_containers(tmp_path, monkeypatch):
+def test_old_four_database_backup_is_verified_before_retired_data_is_ignored(tmp_path):
+    folder = fixture_backup(tmp_path/'legacy')
+    manifest = json.loads((folder/'manifest.json').read_text())
+    old = folder/'queue.dump'
+    old.write_text('Retired history retained in the original backup')
+    manifest['schema_versions']['queue'] = 2
+    manifest['files']['queue.dump'] = {'sha256':p.sha256(old), 'bytes':old.stat().st_size}
+    p.private_json(folder/'manifest.json', manifest)
+    assert p.verify_backup(folder, 'test-internal-key')['schema_versions']['queue'] == 2
+    old.write_text('corrupted')
+    with pytest.raises(RuntimeError, match='checksum mismatch'):
+        p.verify_backup(folder, 'test-internal-key')
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_backup_failure_resumes_only_previously_running_containers(tmp_path, monkeypatch, legacy):
     monkeypatch.setattr(p, 'ROOT', tmp_path)
     env = tmp_path/'config'; env.write_text('synthetic config')
     calls = []
     def broken(*a, **kw): raise RuntimeError('fixture dump failure')
-    stack = SimpleNamespace(check_live_secret=lambda:None, running_apps=lambda:['auth','web'],
+    active = ['auth','web'] + (['queue'] if legacy else [])
+    stack = SimpleNamespace(check_live_secret=lambda:None, running_apps=lambda:active,
         psql=lambda *a, **kw:'1024', dc=lambda *a, **kw:calls.append(a), env_file=env,
-        config={}, snapshot=broken)
+        config={'services':{'queue':{}}} if legacy else {}, legacy=legacy, snapshot=broken)
     with pytest.raises(RuntimeError, match='fixture dump failure'): p.backup(stack, resume=False)
-    assert calls == [('stop', *p.APPS), ('start', 'auth', 'web')]
+    assert calls == [('stop', *p.APPS, *(['queue'] if legacy else [])), ('start', *active)]
     assert not list((tmp_path/'backups').glob('*/COMPLETE'))
 
 

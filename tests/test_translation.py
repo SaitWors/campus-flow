@@ -39,7 +39,7 @@ def test_migrate_existing_v1_preserves_data(tmp_path, monkeypatch):
         migrate(engine, Base)
     engine.dispose()
 
-def test_auto_manual_rename_and_no_queue_side_effects(db_factory):
+def test_auto_manual_rename_preserves_lesson_revisions(db_factory):
     _, db_factory = db_factory
     calls = []
     worker = TitleTranslator(db_factory, lambda title: calls.append(title) or 'Database systems')

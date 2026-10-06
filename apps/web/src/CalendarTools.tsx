@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {api} from './api';
 import {addDays,dateInZone,iso} from './date';
 import {Button,Field,Notice,useApp,useJob,useT} from './ui';
+import {useStudyFilters} from './useStudy';
 type OfflineStatus={ok:boolean;saved_at:string|null};
 async function offlineMessage(type:string,extra:Record<string,unknown>={}):Promise<OfflineStatus>{
  if(!('serviceWorker' in navigator)||!isSecureContext)throw {code:'network'};
@@ -10,7 +11,7 @@ async function offlineMessage(type:string,extra:Record<string,unknown>={}):Promi
  return new Promise((resolve,reject)=>{const channel=new MessageChannel();const timer=setTimeout(()=>{channel.port1.close();reject({code:'network'});},15000);channel.port1.onmessage=e=>{clearTimeout(timer);channel.port1.close();if(e.data.ok)resolve(e.data);else reject({code:'network'});};registration.active?.postMessage({type,...extra},[channel.port2]);});
 }
 export default function CalendarTools(){
- const t=useT();const {lang,settings,notify}=useApp();const job=useJob();const [subgroup,setSubgroup]=useState(0);const [saved,setSaved]=useState<string|null>(null);
+ const t=useT();const {lang,settings,notify}=useApp();const job=useJob();const {filters,update}=useStudyFilters();const subgroup=filters.subgroup;const setSubgroup=(value:number)=>update({subgroup:value});const [saved,setSaved]=useState<string|null>(null);
  const supported='serviceWorker' in navigator&&isSecureContext;
  const link=new URL('/api/schedule/guest/calendar.ics?'+new URLSearchParams({lang,subgroup:String(subgroup)}),location.origin).href;
  useEffect(()=>{let active=true;if(supported)void offlineMessage('offline-status').then(r=>active&&setSaved(r.saved_at)).catch(()=>{});return()=>{active=false;};},[supported]);

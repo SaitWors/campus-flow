@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Query, Request
 from pydantic import Field, model_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, case, delete, func, or_, select, update
 
 from services.common.core import (
     Input, database, digest, fail, identity, manager, migrate,
@@ -19,11 +19,14 @@ from services.notifications.models import (
     Announcement, Audit, Base, Cursor, Delivery, Guard, Notification,
     Preference, PushKey, Subscription, Question, QuestionMessage,
 )
-from services.notifications.questions import accessible, install as install_questions, migrate_questions
+from services.notifications import telegram as tg
+from services.notifications.events import assignment_data, relevant, schedule_data
+from services.notifications.questions import STAFF, accessible, install as install_questions, migrate_questions
 from services.notifications.push import DEFAULTS, generate_keys, quiet, send, validate_subscription
 
 engine, DB = database('notifications')
 logger = logging.getLogger('campus.notifications')
+telegram_transport = tg.Transport()
 
 
 def auth(path, **kwargs):
@@ -40,7 +43,7 @@ def guard(db):
 
 def preferences(db, user_id):
     item = db.get(Preference, user_id)
-    return {**DEFAULTS, **(item.data if item else {}), 'revision': item.revision if item else 0}
+    return {**DEFAULTS, **({k:v for k,v in item.data.items() if k in DEFAULTS} if item else {}), 'revision': item.revision if item else 0}
 
 
 def visible(data, user):
@@ -61,7 +64,7 @@ def serialize(item):
     }
 
 
-def notify(db, user, source_key, category, data, expires_at, announcement_id=''):
+def notify(db, user, source_key, category, data, expires_at, announcement_id='', channels=('push', 'telegram')):
     existing = db.scalar(select(Notification).where(
         Notification.user_id == user['id'], Notification.source_key == source_key))
     if existing:
@@ -70,9 +73,12 @@ def notify(db, user, source_key, category, data, expires_at, announcement_id='')
                         data=data, expires_at=expires_at, announcement_id=announcement_id)
     db.add(item)
     db.flush()
-    if preferences(db, user['id'])[category]:
+    pref = preferences(db, user['id'])
+    if 'push' in channels and (pref.get(category) or data.get('manual_test') == 'push'):
         for sub in db.scalars(select(Subscription).where(Subscription.user_id == user['id'])):
             db.add(Delivery(notification_id=item.id, subscription_id=sub.id))
+    if 'telegram' in channels:
+        tg.enqueue(db, item, pref)
     return item
 
 
@@ -84,6 +90,8 @@ def push_config():
 
 
 def consume(source):
+    if source != 'schedule':
+        return
     with DB() as db:
         cursor = db.get(Cursor, source)
         after = cursor.seq if cursor else None
@@ -99,12 +107,7 @@ def consume(source):
     if not events:
         return
     users = auth('/internal/notification-recipients')
-    calls = {}
-    if source == 'queue':
-        for event in events:
-            if event['type'] == 'queue.called':
-                entry_id = event['data']['entry_id']
-                calls[entry_id] = remote(source_url('queue'), '/internal/calls/' + entry_id)
+    assignments = assignment_audiences(e['data'].get('assignment_id') for e in events if e['type'].startswith('assignment.'))
     with DB.begin() as db:
         guard(db)
         cursor = db.get(Cursor, source)
@@ -112,33 +115,89 @@ def consume(source):
         if not batch:
             return
         stamp = now()
-        if source == 'schedule':
-            recent = [e for e in batch if datetime.fromisoformat(e['at'].replace('Z', '+00:00')).replace(tzinfo=None) > stamp - timedelta(hours=1)]
+        recent = [e for e in batch if not e['type'].startswith('assignment.') and
+                  datetime.fromisoformat(e['at'].replace('Z', '+00:00')).replace(tzinfo=None) > stamp - timedelta(hours=1)]
+        for user in users:
+            data = schedule_data(recent, user)
+            if data:
+                notify(db, user, 'schedule:' + str(batch[-1]['seq']), 'schedule', data, stamp + timedelta(days=30))
+        for event in batch:
+            if event['type'] not in ('assignment.created', 'assignment.updated', 'assignment.archived'):
+                continue
+            current = assignments.get(event['data'].get('assignment_id'))
+            if not current or (current['archived'] and event['type'] != 'assignment.archived'):
+                continue
+            data = assignment_data({**event['data'], 'subgroup':current['subgroup']}, event['type'].split('.')[1])
             for user in users:
-                relevant = [e for e in recent if e['data'].get('subgroup', 0) in (0, user['subgroup'])]
-                if relevant:
-                    notify(db, user, 'schedule:' + str(batch[-1]['seq']), 'schedule', {
-                        'title': 'Расписание обновлено', 'title_en': 'Timetable updated',
-                        'body': 'Проверьте время, аудиторию и статус занятий.',
-                        'body_en': 'Check class times, rooms and status.', 'route': '#schedule',
-                        'important': False, 'audience': 'all',
-                    }, stamp + timedelta(days=30))
-        else:
-            members = {u['id']: u for u in users}
-            for event in batch:
-                data = event['data']
-                call = calls.get(data.get('entry_id'), {})
-                user = members.get(data.get('user_id'))
-                if not user or not call.get('active'):
-                    continue
-                expiry = min(stamp + timedelta(minutes=10), datetime.fromisoformat(call['ends_at']).astimezone(timezone.utc).replace(tzinfo=None))
-                notify(db, user, 'queue:' + event['id'], 'queue', {
-                    'title': 'Ваша очередь', 'title_en': 'It is your turn',
-                    'body': 'Вас вызвали на сдачу. Откройте очередь.',
-                    'body_en': 'You have been called. Open your queue.', 'route': '#queues',
-                    'important': False, 'audience': 'all', 'entry_id': data['entry_id'],
-                }, expiry)
+                if relevant(current['subgroup'], user):
+                    # Managers may receive subgroup updates; stored audience must
+                    # also reflect that permission for later role changes.
+                    info = {**data, 'audience':'managers'} if user['role'] in STAFF and not visible(data, user) else data
+                    notify(db, user, 'assignment:' + event['id'], 'assignments', info, stamp + timedelta(days=30))
         cursor.seq = batch[-1]['seq']
+
+
+def utc_stamp(value):
+    return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def assignment_reminders():
+    reminders = remote(source_url('schedule'), '/internal/assignments/reminders')
+    if not reminders:
+        return
+    users = auth('/internal/notification-recipients')
+    with DB.begin() as db:
+        guard(db)
+        for item in reminders:
+            due = utc_stamp(item['due_at'])
+            if not now() < due <= now() + timedelta(hours=24):
+                continue
+            data = assignment_data(item, reminder=True)
+            source = 'assignment:reminder:' + str(item['id']) + ':' + str(item['revision']) + ':' + item['due_at']
+            for user in users:
+                if user['id'] in item.get('completed_user_ids', []) or not relevant(item.get('subgroup', 0), user):
+                    continue
+                info = {**data, 'audience':'managers'} if user['role'] in STAFF and not visible(data, user) else data
+                notify(db, user, source, 'assignments', info, due)
+
+
+def assignment_audiences(ids):
+    ids = sorted({i for i in ids if isinstance(i, str) and 1 <= len(i) <= 36})
+    items = {}
+    for start in range(0, len(ids), 200):
+        batch = ids[start:start + 200]
+        result = remote(source_url('schedule'), '/internal/assignments/audiences', method='POST', json={'ids':batch})
+        for item in result['items']:
+            if item['id'] in batch and item['subgroup'] in (0, 1, 2):
+                items[item['id']] = item
+    return items
+
+
+def delivery_eligible(info, member):
+    if info['category'] != 'assignments':
+        return True
+    current = assignment_audiences([info.get('assignment_id')]).get(info.get('assignment_id'))
+    if not current or not relevant(current['subgroup'], member):
+        return False
+    if current['archived'] and not info.get('assignment_archived'):
+        return False
+    return reminder_eligible(info, member['id'])
+
+
+def reminder_eligible(info, user_id):
+    if not info.get('reminder'):
+        return True
+    return any(item['id'] == info.get('assignment_id') and item['revision'] == info.get('revision') and
+               item['due_at'] == info.get('due_at') and user_id not in item.get('completed_user_ids', [])
+               for item in remote(source_url('schedule'), '/internal/assignments/reminders'))
+
+
+def poll_telegram():
+    return tg.poll(DB, guard, auth, telegram_transport)
+
+
+def deliver_telegram():
+    return tg.deliver(DB, guard, auth, preferences, visible, serialize, delivery_eligible, telegram_transport)
 
 
 def deliver_one():
@@ -160,16 +219,17 @@ def deliver_one():
             delivery.state = 'skipped'
             return True
         pref = preferences(db, item.user_id)
-        if not pref[item.category]:
+        manual = item.data.get('manual_test') == 'push'
+        if not pref.get(item.category) and not manual:
             delivery.state = 'skipped'
             return True
-        if quiet(pref):
+        if quiet(pref) and not manual:
             delivery.due_at = now() + timedelta(minutes=1)
             return True
         key = db.get(PushKey, 1).private_key
         info = {**serialize(item), 'user_id': item.user_id}
         sub_id, session_hash, sub_data = sub.id, sub.session_hash, sub.data
-    # No network calls inside transactions. Check sessions, roles and current call.
+    # No network calls inside transactions. Check current sessions and audience.
     member = auth('/internal/push-check', method='POST', json={
         'user_id': info['user_id'], 'session_hash': session_hash,
     })
@@ -179,8 +239,8 @@ def deliver_one():
             db.execute(delete(Delivery).where(Delivery.subscription_id == sub_id))
         return True
     eligible = visible(info, member)
-    if eligible and info['category'] == 'queue':
-        eligible = remote(source_url('queue'), '/internal/calls/' + info['entry_id'])['active']
+    if eligible:
+        eligible = delivery_eligible(info, member)
     # Recheck withdrawals, device deletion and preference changes after auth.
     with DB.begin() as db:
         delivery = db.get(Delivery, did)
@@ -189,10 +249,10 @@ def deliver_one():
         if not delivery:
             return True
         pref = preferences(db, info['user_id'])
-        if not eligible or not item or not sub or item.read_at or item.expires_at <= now() or not pref[info['category']]:
+        if not eligible or not item or not sub or item.read_at or item.expires_at <= now() or (not pref.get(info['category']) and not manual):
             delivery.state = 'skipped'
             return True
-        if quiet(pref):
+        if quiet(pref) and not manual:
             delivery.due_at = now() + timedelta(minutes=1)
             return True
     english, details = pref['language'] == 'en', pref['show_details']
@@ -229,6 +289,8 @@ def cleanup():
         guard(db)
         expired = select(Notification.id).where(Notification.expires_at <= now())
         db.execute(delete(Delivery).where(Delivery.notification_id.in_(expired)))
+        db.execute(delete(tg.TelegramDelivery).where(tg.TelegramDelivery.notification_id.in_(expired)))
+        db.execute(delete(tg.TelegramLink).where(tg.TelegramLink.expires_at < now() - timedelta(days=1)))
         db.execute(delete(Notification).where(Notification.expires_at <= now()))
         db.execute(delete(Subscription).where(Subscription.updated_at < now() - timedelta(days=8)))
         db.execute(delete(Delivery).where(~Delivery.subscription_id.in_(select(Subscription.id))))
@@ -242,7 +304,7 @@ def cleanup():
 async def worker():
     turns = 0
     while True:
-        for source in ('schedule', 'queue'):
+        for source in ('schedule',):
             try:
                 await asyncio.to_thread(consume, source)
             except asyncio.CancelledError:
@@ -259,6 +321,11 @@ async def worker():
                 logger.warning('Push delivery postponed')
                 break
         turns += 1
+        if turns % 20 == 1:
+            try:
+                await asyncio.to_thread(assignment_reminders)
+            except Exception:
+                logger.warning('Assignment reminder sync postponed')
         if turns % 120 == 0:
             try:
                 await asyncio.to_thread(cleanup)
@@ -267,26 +334,62 @@ async def worker():
         await asyncio.sleep(3)
 
 
+async def telegram_call(job):
+    # Cancel the async worker only after its bounded HTTP call exits. Closing the
+    # shared transport while its thread is still running can lose its result.
+    pending = asyncio.create_task(asyncio.to_thread(job))
+    try:
+        return await asyncio.shield(pending)
+    except asyncio.CancelledError:
+        try:
+            await pending
+        except Exception:
+            pass
+        raise
+
+
+async def telegram_worker(polling=False):
+    while True:
+        try:
+            if polling:
+                await telegram_call(poll_telegram)
+            else:
+                for _ in range(20):
+                    if not await telegram_call(deliver_telegram):
+                        break
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning('Telegram sync postponed')
+        await asyncio.sleep(1 if polling else 3)
+
+
 @asynccontextmanager
 async def lifespan(app):
     service_secret()
-    migrate(engine, Base, (migrate_questions,))
+    migrate(engine, Base, (migrate_questions, tg.migrate_notifications))
     with DB.begin() as db:
         if not db.get(Guard, 1):
             db.add(Guard(id=1))
         if not db.get(PushKey, 1):
             private, public = generate_keys()
             db.add(PushKey(id=1, private_key=private, public_key=public))
-    task = asyncio.create_task(worker()) if os.getenv('NOTIFICATION_WORKER', 'true') == 'true' else None
+    tasks = []
+    if os.getenv('NOTIFICATION_WORKER', 'true') == 'true':
+        tasks.append(asyncio.create_task(worker()))
+        if tg.configuration()['enabled']:
+            tasks.extend((asyncio.create_task(telegram_worker(True)), asyncio.create_task(telegram_worker())))
     try:
         yield
     finally:
-        if task:
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             try:
                 await task
             except asyncio.CancelledError:
                 pass
+        telegram_transport.close()
 
 
 app = setup_app('Campus Flow · Notifications', engine, lifespan)
@@ -309,7 +412,8 @@ def get_preferences(request: Request):
 class PreferencesInput(Input):
     revision: int = Field(ge=0)
     schedule: bool
-    queue: bool
+    assignments: bool = True
+    telegram_enabled: bool = False
     announcements: bool
     questions: bool = True
     important_popups: bool
@@ -348,24 +452,55 @@ def set_preferences(data: PreferencesInput, request: Request):
         return preferences(db, user['id'])
 
 
-def inbox_items(db, user):
-    return [n for n in db.scalars(select(Notification).where(
-        Notification.user_id == user['id'], Notification.expires_at > now()
-    ).order_by(Notification.created_at.desc(), Notification.id.desc())) if visible(n.data, user)]
+def inbox_scope(user, stamp):
+    audience = func.coalesce(Notification.data['audience'].as_string(), 'all')
+    allowed = or_(audience == 'all', audience == 'subgroup' + str(user['subgroup']))
+    question = Notification.data['owner_id'].as_string() == user['id']
+    if user['role'] in STAFF:
+        allowed = or_(allowed, audience == 'managers')
+        question = or_(question, Notification.data['recipient_id'].as_string() == user['id'])
+    allowed = or_(allowed, and_(audience == 'question', question))
+    return and_(Notification.user_id == user['id'], Notification.expires_at > stamp,
+                Notification.category.in_(('schedule', 'assignments', 'announcements', 'questions')), allowed)
+
+
+def current_assignment_scope(user, stamp):
+    # Fetch only distinct IDs, never notification bodies or other users' rows.
+    assignment_id = Notification.data['assignment_id'].as_string()
+    with DB() as db:
+        ids = list(db.scalars(select(assignment_id).distinct().where(
+            inbox_scope(user, stamp), Notification.category == 'assignments')))
+    current = assignment_audiences(ids)
+    active, archived = [], []
+    for item in current.values():
+        if relevant(item['subgroup'], user):
+            (archived if item['archived'] else active).append(item['id'])
+    allowed = or_(assignment_id.in_(active), and_(assignment_id.in_(archived),
+                  Notification.data['assignment_archived'].as_boolean() == True))
+    return or_(Notification.category != 'assignments', allowed)
 
 
 @app.get('/api/notifications/inbox')
 def inbox(request: Request, offset: int = Query(default=0, ge=0, le=10000), unread_only: bool = False):
     user = identity(request)
+    stamp = now()
+    assignments = current_assignment_scope(user, stamp)
     with DB() as db:
-        stamp = now()
-        items = inbox_items(db, user)
+        scope = and_(inbox_scope(user, stamp), assignments)
+        total_all, unread = db.execute(select(func.count(), func.coalesce(func.sum(case((Notification.read_at == None, 1), else_=0)), 0))
+                                      .select_from(Notification).where(scope)).one()
+        query = select(Notification).where(scope)
+        if unread_only:
+            query = query.where(Notification.read_at == None)
+        order = (Notification.created_at.desc(), Notification.id.desc())
+        items = db.scalars(query.order_by(*order).offset(offset).limit(30))
         pref = preferences(db, user['id'])
-        popups = [n for n in items if not n.popup_dismissed and not n.read_at and n.data.get('important')] if pref['important_popups'] else []
-        filtered = [n for n in items if not n.read_at] if unread_only else items
-        return {'items': [serialize(n) for n in filtered[offset:offset + 30]],
-                'unread': sum(n.read_at is None for n in items), 'total': len(filtered),
-                'popups': [serialize(n) for n in popups[:3]], 'as_of': stamp.isoformat() + 'Z'}
+        popups = db.scalars(select(Notification).where(scope, Notification.read_at == None,
+            Notification.popup_dismissed == False, Notification.data['important'].as_boolean() == True)
+            .order_by(*order).limit(3)) if pref['important_popups'] else []
+        return {'items': [serialize(n) for n in items], 'unread': unread,
+                'total': unread if unread_only else total_all,
+                'popups': [serialize(n) for n in popups], 'as_of': stamp.isoformat() + 'Z'}
 
 
 class ReadInput(Input):
@@ -376,12 +511,15 @@ class ReadInput(Input):
 @app.post('/api/notifications/read')
 def read(data: ReadInput, request: Request):
     user = identity(request)
+    assignments = current_assignment_scope(user, now())
     with DB.begin() as db:
         guard(db)
         before = data.before.astimezone(timezone.utc).replace(tzinfo=None) if data.before else None
-        for item in inbox_items(db, user):
-            if item.id in data.ids or (before and item.created_at <= before):
-                item.read_at, item.popup_dismissed = now(), True
+        requested = Notification.id.in_(data.ids)
+        if before:
+            requested = or_(requested, Notification.created_at <= before)
+        db.execute(update(Notification).where(inbox_scope(user, now()), assignments, requested)
+                   .values(read_at=now(), popup_dismissed=True))
     return {'ok': True}
 
 
@@ -408,6 +546,11 @@ def subscribe(data: Subscribe, request: Request):
     user = identity(request)
     if not push_config()[0]:
         fail('push_not_configured', 503)
+    session_hash = digest(request.cookies.get('cf_session', ''))
+    session = auth('/internal/push-check', method='POST', json={'user_id':user['id'], 'session_hash':session_hash})
+    if not session.get('active'):
+        fail('unauthorized', 401)
+    expiry = utc_stamp(session['expires_at']) if session.get('expires_at') else None
     with DB.begin() as db:
         guard(db)
         hashed = digest(data.endpoint)
@@ -421,18 +564,26 @@ def subscribe(data: Subscribe, request: Request):
             db.add(sub)
         sub.data = data.model_dump(exclude={'label'})
         sub.label = data.label
-        sub.session_hash = digest(request.cookies.get('cf_session', ''))
+        sub.session_hash = session_hash
+        sub.expires_at = expiry
         sub.updated_at = now()
         db.flush()
-        return {'id': sub.id}
+        return {'id': sub.id, 'expires_at':expiry.isoformat() + 'Z' if expiry else None, 'active':True}
 
 
 @app.get('/api/notifications/subscriptions')
 def devices(request: Request):
     user = identity(request)
     with DB() as db:
-        return [{'id': s.id, 'label': s.label, 'updated_at': s.updated_at.isoformat() + 'Z'}
-                for s in db.scalars(select(Subscription).where(Subscription.user_id == user['id']))]
+        subscriptions = list(db.scalars(select(Subscription).where(Subscription.user_id == user['id'])))
+    devices = []
+    for sub in subscriptions:
+        member = auth('/internal/push-check', method='POST', json={'user_id':user['id'], 'session_hash':sub.session_hash})
+        expiry = member.get('expires_at') or (sub.expires_at.isoformat() + 'Z' if sub.expires_at else None)
+        active = bool(member.get('active') and (not expiry or utc_stamp(expiry) > now()))
+        devices.append({'id':sub.id, 'label':sub.label, 'updated_at':sub.updated_at.isoformat() + 'Z',
+                        'expires_at':expiry, 'active':active})
+    return devices
 
 
 @app.delete('/api/notifications/subscriptions/{sid}')
@@ -454,13 +605,74 @@ def test_push(request: Request):
     with DB.begin() as db:
         guard(db)
         minute = now().strftime('%Y%m%d%H%M')
-        item = notify(db, user, 'test:' + minute, 'announcements', {
+        item = notify(db, user, 'push:test:' + minute, 'announcements', {
             'title': 'Уведомления подключены', 'title_en': 'Notifications connected',
             'body': 'Campus Flow готов присылать обновления.',
             'body_en': 'Campus Flow is ready to send updates.', 'route': '#notifications',
-            'important': False, 'audience': 'all',
-        }, now() + timedelta(minutes=10))
+            'important': False, 'audience': 'all', 'manual_test':'push',
+        }, now() + timedelta(minutes=10), channels=('push',))
         return {'id': item.id}
+
+
+@app.get('/api/notifications/telegram')
+def telegram_status(request: Request):
+    user = identity(request)
+    config = tg.configuration()
+    with DB() as db:
+        binding = db.get(tg.TelegramBinding, user['id'])
+        connected = bool(config['enabled'] and binding and binding.active and binding.bot_id == config['bot_id'])
+        result = {'enabled':config['enabled'], 'bot_username':config['bot_username'], 'connected':connected}
+        state = db.get(tg.TelegramState, 1)
+        if state and state.bot_id == config['bot_id'] and state.last_error:
+            result['last_error'] = state.last_error
+        if binding:
+            result['chat_label'] = binding.chat_label
+            if binding.last_error:
+                result['last_error'] = binding.last_error
+            elif config['enabled'] and binding.bot_id != config['bot_id']:
+                result['last_error'] = 'bot_changed'
+        return result
+
+
+@app.post('/api/notifications/telegram/link')
+def telegram_link(request: Request):
+    user = identity(request)
+    tg.required()
+    with DB.begin() as db:
+        guard(db)
+        return tg.issue_link(db, user['id'])
+
+
+@app.delete('/api/notifications/telegram')
+def telegram_disconnect(request: Request):
+    user = identity(request)
+    with DB.begin() as db:
+        guard(db)
+        tg.disconnect(db, user['id'])
+    return {'ok':True}
+
+
+@app.post('/api/notifications/telegram/test')
+def telegram_test(request: Request):
+    user = identity(request)
+    config = tg.required()
+    with DB.begin() as db:
+        guard(db)
+        binding = db.get(tg.TelegramBinding, user['id'])
+        if not binding or not binding.active or binding.bot_id != config['bot_id']:
+            fail('telegram_not_connected', 409)
+        if not preferences(db, user['id'])['telegram_enabled']:
+            fail('telegram_disabled', 409)
+        if binding.last_test_at and binding.last_test_at > now() - timedelta(minutes=1):
+            fail('too_many_attempts', 429)
+        binding.last_test_at = now()
+        notify(db, user, 'telegram:test:' + now().strftime('%Y%m%d%H%M'), 'announcements', {
+            'title':'Telegram подключён', 'title_en':'Telegram connected',
+            'body':'Campus Flow готов присылать обновления.', 'body_en':'Campus Flow is ready to send updates.',
+            'route':'#notifications', 'important':False, 'audience':'all',
+            'manual_test':'telegram',
+        }, now() + timedelta(minutes=10), channels=('telegram',))
+    return {'ok':True}
 
 
 class Publish(Input):
@@ -539,6 +751,7 @@ def withdraw(aid: str, request: Request):
             announcement.withdrawn = True
             ids = select(Notification.id).where(Notification.announcement_id == aid)
             db.execute(delete(Delivery).where(Delivery.notification_id.in_(ids)))
+            db.execute(delete(tg.TelegramDelivery).where(tg.TelegramDelivery.notification_id.in_(ids)))
             db.execute(delete(Notification).where(Notification.announcement_id == aid))
             db.add(Audit(actor=user['name'], action='withdrawn', target=aid))
     return {'ok': True}

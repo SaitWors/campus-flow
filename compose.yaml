@@ -22,7 +22,6 @@ x-environment: &environment
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   AUTH_URL: http://auth:8000
   SCHEDULE_URL: http://schedule:8000
-  QUEUE_URL: http://queue:8000
   PYTHONDONTWRITEBYTECODE: '1'
 
 x-database: &database
@@ -53,14 +52,6 @@ services:
       POSTGRES_PASSWORD: ${SCHEDULE_DB_PASSWORD:?Run setup}
     volumes: [schedule_data:/var/lib/postgresql/data]
     networks: [schedule_data_net]
-  queue-db:
-    <<: *database
-    environment:
-      POSTGRES_USER: queue
-      POSTGRES_DB: queue
-      POSTGRES_PASSWORD: ${QUEUE_DB_PASSWORD:?Run setup}
-    volumes: [queue_data:/var/lib/postgresql/data]
-    networks: [queue_data_net]
   notifications-db:
     <<: *database
     environment:
@@ -77,9 +68,11 @@ services:
       DATABASE_URL: postgresql+psycopg://notifications:${NOTIFICATIONS_DB_PASSWORD}@notifications-db:5432/notifications
       PUSH_ENABLED: ${PUSH_ENABLED:-true}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     depends_on:
       notifications-db: {condition: service_healthy}
-      queue: {condition: service_healthy}
+      schedule: {condition: service_healthy}
     networks: [services_net, notifications_data_net]
   auth:
     <<: *app
@@ -102,16 +95,6 @@ services:
       schedule-db: {condition: service_healthy}
       auth: {condition: service_healthy}
     networks: [services_net, schedule_data_net, translation_net]
-  queue:
-    <<: *app
-    command: [uvicorn, services.queue.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
-    environment:
-      <<: *environment
-      DATABASE_URL: postgresql+psycopg://queue:${QUEUE_DB_PASSWORD}@queue-db:5432/queue
-    depends_on:
-      queue-db: {condition: service_healthy}
-      schedule: {condition: service_healthy}
-    networks: [services_net, queue_data_net]
   translator:
     profiles: [translation]
     build:
@@ -144,7 +127,6 @@ services:
     depends_on:
       auth: {condition: service_healthy}
       schedule: {condition: service_healthy}
-      queue: {condition: service_healthy}
       notifications: {condition: service_healthy}
     security_opt: [no-new-privileges:true]
     healthcheck:
@@ -157,12 +139,10 @@ services:
 volumes:
   auth_data:
   schedule_data:
-  queue_data:
   notifications_data:
 networks:
   services_net:
   translation_net: {internal: true}
   auth_data_net: {internal: true}
   schedule_data_net: {internal: true}
-  queue_data_net: {internal: true}
   notifications_data_net: {internal: true}

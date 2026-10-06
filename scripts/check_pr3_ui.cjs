@@ -109,12 +109,13 @@ function otp(secret){let bits='';for(const c of secret)bits+='ABCDEFGHIJKLMNOPQR
   await dialog.getByRole('button',{name:'Confirm and enable',exact:true}).click();
   const codes=(await dialog.getByLabel('Recovery codes',{exact:true}).inputValue()).split('\n');
   assert.equal(codes.length,10);await dialog.getByRole('button',{name:'I saved the codes',exact:true}).click();
-  await m.getByRole('button',{name:'Sign out',exact:true}).click();
+  await m.getByRole('button',{name:'More',exact:true}).click();
+  await m.getByRole('dialog').getByRole('button',{name:'Sign out',exact:true}).click();
   await m.getByLabel('Email',{exact:true}).fill('pr3-other@example.test');await m.getByLabel('Password',{exact:true}).fill('Integration-test-password-2026');
   await m.getByRole('button',{name:'Sign in',exact:true}).click();await m.getByRole('heading',{name:'Verify sign-in',exact:true}).waitFor();
   await m.screenshot({path:'test-results/pr3-mfa-login-mobile.png'});
   await m.getByLabel('Authenticator or recovery code',{exact:true}).fill(codes[0]);await m.getByRole('button',{name:'Sign in',exact:true}).click();
-  await m.getByRole('heading',{name:'Schedule',exact:true}).waitFor();
+  await m.getByRole('heading',{name:'Today',exact:true}).waitFor();
   await m.goto('/#preferences');await m.getByRole('button',{name:'Disable two-factor authentication',exact:true}).click();dialog=m.getByRole('dialog');
   await dialog.getByLabel('Current password',{exact:true}).fill('Integration-test-password-2026');await dialog.getByLabel('Authenticator or recovery code',{exact:true}).fill(codes[1]);
   await dialog.getByRole('button',{name:'Disable two-factor authentication',exact:true}).click();await dialog.waitFor({state:'hidden'});

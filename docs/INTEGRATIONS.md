@@ -1,64 +1,38 @@
 # Integrations and API
 
-The gateway exposes same-origin endpoints. OpenAPI schemas are available at:
+OpenAPI: `/api/auth/openapi.json`, `/api/schedule/openapi.json`, `/api/notifications/openapi.json`. The public gateway denies `/internal/*`. Never distribute `INTERNAL_TOKEN` to browsers or members.
 
-- `/api/auth/openapi.json`
-- `/api/schedule/openapi.json`
-- `/api/queues/openapi.json`
+## Authentication
 
-The public gateway denies `/internal/`. Never put `INTERNAL_TOKEN` in browser JavaScript or distribute it to students. Internal routes appear in each service's raw schema, but remain inaccessible through the public gateway.
+`POST /api/auth/login` accepts email/password and sets a seven-day `cf_session`, or returns a short-lived MFA challenge. Approved users call `/api/auth/me` to obtain their identity and CSRF token. Mutations require `X-CSRF-Token`. Sessions can be revoked earlier by security changes. External read-only clients should use minimally privileged accounts; no service-account/PAT scheme is provided.
 
-## Authentication for an approved account
+## Academic API
 
-`POST /api/auth/login` accepts `email` and `password`, sets `cf_session` and returns a CSRF token. Keep the cookie in a cookie jar; pass `X-CSRF-Token` on mutations. Sessions expire after seven days. Blocking, password reset and password changes may revoke them sooner.
-
-Use a minimally privileged approved account for a read-only external integration. A manager account is required for schedule/queue management; there are no dedicated service accounts, OAuth scopes or personal access tokens in this version. Do not treat a browser session as a permanent bot credential.
-
-## Main endpoints
-
-| Method / path | Purpose |
+| Method and path | Purpose |
 | --- | --- |
-| GET `/api/auth/me` | Current approved account and CSRF token |
-| GET `/api/schedule/settings` | Group, timezone, semester and reference parity |
-| GET `/api/schedule/occurrences?start=2026-09-01&end=2026-09-30` | Classes in a date range, max 93-day difference |
-| GET `/api/schedule/occurrences/{id}` | One class with current revision and timezone-aware instants |
-| GET `/api/schedule/rules` | Manager-only semester templates |
-| POST `/api/schedule/rules` | Create a recurring template |
-| PATCH `/api/schedule/occurrences/{id}` | Replace editable fields of one occurrence; include current revision |
-| GET `/api/queues?mine=true` | Queues in which this user has an active place |
-| GET `/api/queues?occurrence_id={id}` | Queue associated with a particular class |
-| POST `/api/queues` | Create a class queue, manager only |
-| GET `/api/queues/{id}` | Queue, active places, history and caller's position |
-| POST `/api/queues/{id}/actions` | Join, leave, open, pause, next, done, skip, remove, close or configure |
-| GET `/api/schedule/events?after=0` | Up to 200 schedule events after a cursor |
+| GET `/api/schedule/settings` | Semester and timezone |
+| GET `/api/schedule/occurrences?start=YYYY-MM-DD&end=YYYY-MM-DD` | Classes; max 93-day difference |
+| GET `/api/schedule/occurrences/{id}` | Current class and revision |
+| GET/POST `/api/schedule/rules` | Manager-only recurring templates |
+| PATCH/DELETE `/api/schedule/occurrences/{id}` | Manager edits/removes one class; revision required |
+| GET `/api/schedule/subjects` | Member subject catalogue/details |
+| GET/PATCH `/api/schedule/subjects/{key}` | Read details / manager updates teacher, requirements and HTTPS links |
+| GET `/api/schedule/assignments?subgroup=0&subject_key=...` | Active assignments with only the caller's progress |
+| POST `/api/schedule/assignments` | Manager creates subject/title/description/due_at/subgroup/material_url |
+| PUT/DELETE `/api/schedule/assignments/{id}` | Manager updates / archives; revision required |
+| PUT `/api/schedule/assignments/{id}/progress` | Own status and expected progress revision; initial revision 0 |
+| GET `/api/schedule/events?after=SEQ` | Up to 200 events permitted for the current member |
 
-For a join:
+`due_at` is a timezone-aware ISO instant or null. Progress statuses: `not_started`, `in_progress`, `ready`, `done`. Students see common assignments plus their current subgroup; selecting another subgroup is forbidden. Progress is personal, including for managers. Clients handle 401/403, 404 for inaccessible items, 409 for stale changes, 422 validation and 503 upstream failures.
 
-```http
-POST /api/queues/QUEUE_ID/actions
-Content-Type: application/json
-X-CSRF-Token: TOKEN_FROM_LOGIN
-Idempotency-Key: A_NEW_UUID_FOR_THIS_ACTION
-Cookie: cf_session=SESSION_COOKIE
+## Events and notifications
 
-{"action":"join","task":"Лабораторная № 2"}
-```
+Persist the last successfully processed `seq` and deduplicate/retry deliberately. Lesson events include safe before/after projections; assignment events contain id, revision, subject/title, due instant and subgroup. This is HTTP polling, not a webhook. No private question text is included in delivery messages.
 
-Reuse the same idempotency key and same body when retrying an uncertain response. Generate a new key for a new intentional action. Manager commands additionally pass the latest queue `revision`; for example `{"action":"next","revision":8}`. Clients must handle 401/403 access failures, 409 business conflicts, 422 field validation and 503 upstream unavailability.
+The notifications API owns inbox/read state, category/language/privacy/quiet-hour preferences, subscriptions, announcements and private questions. Telegram endpoints: `GET /telegram`, `POST /telegram/link`, `DELETE /telegram`, `POST /telegram/test` under `/api/notifications`. Linking is explicit, CSRF protected, one-time and expires after ten minutes. See [channel setup](NOTIFICATIONS_RU.md).
 
-## Events
+## Calendar and translation
 
-Read `/api/schedule/events?after=LAST_SEQ`. Process the returned records in sequence, then persist the last successfully handled `seq`. Start with 0 for a full history. Records include `id`, `type`, `data.occurrence_id`, `data.revision` and UTC `at`. Types currently include occurrence.created, occurrence.updated and occurrence.cancelled.
+Authenticated `/api/schedule/calendar.ics?start=...&end=...&lang=ru&subgroup=1` exports a snapshot. Public `/api/schedule/guest/calendar.ics?lang=ru&subgroup=1` is the persistent limited subscription URL. Stable UIDs and cancellation tombstones let calendar clients reconcile changes; refresh cadence depends on the client.
 
-The integration is responsible for de-duplication, retry policy and its cursor. This is HTTP polling, not webhooks or WebSockets. A Telegram notification service could poll these events and fetch the current class, but Telegram authentication, recipient consent/mapping and delivery are not implemented. Queue events are currently recorded in its audit log, without a public sequential event stream.
-
-## iCalendar
-
-`GET /api/schedule/calendar.ics?start=YYYY-MM-DD&end=YYYY-MM-DD&lang=ru&subgroup=1` exports an authenticated snapshot. `subgroup=0` includes both subgroups. `lang=en` uses an English subject title when one is provided. UIDs remain stable across moves; cancelled classes are exported with CANCELLED status. Lines are folded to 75 UTF-8 octets.
-
-Import the `.ics` into Google Calendar, Apple Calendar or Outlook. This is not a persistent public subscription link: calendar applications cannot use the site's login cookie in a subscription. Re-export to obtain changes; external calendar importers vary in how they handle updates and removals. Sharing public subscription tokens would require a separate, deliberate feature.
-
-
-## Title translation
-
-Responses add title_en_auto and translation_pending; do not send these computed fields in mutation bodies. Empty title_en enables automatic translation. Manager-only POST /api/schedule/title-preview accepts {"title":"Базы данных"} with cookie/CSRF protection. It accepts no provider URLs or keys. English ICS uses manual, automatic, then original titles.
+Computed `title_en_auto` and `translation_pending` are response-only. Empty manual `title_en` permits optional offline translation. Manager `POST /api/schedule/title-preview` accepts only a title, with session/CSRF checks. ICS uses manual English, automatic English, then the original title. External timetable import is not implemented.
