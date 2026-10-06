@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Campus Flow",
   "short_name": "Campus Flow",
-  "description": "Расписание и очереди учебной группы / Group timetable and queues",
+  "description": "Учебный кабинет: расписание, работы и предметы / Study hub: classes, assignments and subjects",
   "lang": "ru",
   "start_url": "/",
   "scope": "/",

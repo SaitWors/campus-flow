@@ -13,9 +13,15 @@ from contextlib import contextmanager, ExitStack
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICES = ('auth', 'schedule', 'queue', 'notifications')
-APPS = ('web', 'notifications', 'queue', 'schedule', 'auth')
-SCHEMAS = {'auth': 3, 'schedule': 3, 'queue': 2, 'notifications': 2}
+SERVICES = ('auth', 'schedule', 'notifications')
+APPS = ('web', 'notifications', 'schedule', 'auth')
+SCHEMAS = {'auth': 3, 'schedule': 4, 'notifications': 3}
+
+
+def writer_apps(stack):
+    # Only an explicitly selected old source Compose can contain this service.
+    retired = ('queue',) if getattr(stack, 'legacy', False) and 'queue' in stack.config.get('services', {}) else ()
+    return (*APPS, *retired)
 
 
 def stamp():
@@ -89,7 +95,7 @@ def run(args, *, what, cwd=ROOT, env=None, input=None, output=None, source=None)
 def validate_config(config, *, disposable=False):
     services = config['services']
     if set(services) != {*SERVICES, 'web', 'postgres'}:
-        raise RuntimeError('Expected four APIs, web and one PostgreSQL; no translator')
+        raise RuntimeError('Expected three APIs, web and one PostgreSQL; no translator')
     for name, service in services.items():
         if 'build' in service:
             raise RuntimeError('Production may not build images: '+name)
@@ -111,8 +117,8 @@ def validate_config(config, *, disposable=False):
     if len(environment.get('INTERNAL_TOKEN', '')) < 32 or len(environment.get('SETUP_KEY', '')) < 24:
         raise RuntimeError('Use strong INTERNAL_TOKEN and SETUP_KEY values')
     passwords = [v for k, v in services['postgres']['environment'].items() if k.endswith('PASSWORD')]
-    if len(passwords) != 5 or len(set(passwords)) != 5 or any(not re.fullmatch(r'[A-Za-z0-9_-]{32,}', p) for p in passwords):
-        raise RuntimeError('Use five different URL-safe database passwords of at least 32 characters')
+    if len(passwords) != 4 or len(set(passwords)) != 4 or any(not re.fullmatch(r'[A-Za-z0-9_-]{32,}', p) for p in passwords):
+        raise RuntimeError('Use four different URL-safe database passwords of at least 32 characters')
     for name in SERVICES:
         env = services[name]['environment']
         size, overflow = int(env['DB_POOL_SIZE']), int(env['DB_MAX_OVERFLOW'])
@@ -163,7 +169,7 @@ class Stack:
 
     def running_apps(self):
         return [c['Config']['Labels']['com.docker.compose.service'] for c in self.containers()
-                if c['State']['Running'] and c['Config']['Labels']['com.docker.compose.service'] in APPS]
+                if c['State']['Running'] and c['Config']['Labels']['com.docker.compose.service'] in writer_apps(self)]
 
     def live_tag(self):
         tags = {c['Config']['Labels'].get('org.opencontainers.image.revision') for c in self.containers()
@@ -207,7 +213,7 @@ class Stack:
                     output=output, what='Backup '+service)
 
     def restore_dump(self, service, path, *, database=None):
-        if self.legacy: raise RuntimeError('Use the legacy restore script for a four-instance stack')
+        if self.legacy: raise RuntimeError('Use the legacy restore script for a multi-instance stack')
         db = database or service
         if service not in SERVICES or not re.fullmatch(r'[a-z0-9_]+', db): raise RuntimeError('Invalid restore destination')
         command = 'export PGPASSWORD="$'+service.upper()+'_DB_PASSWORD"; exec pg_restore -h 127.0.0.1 -U '+service+' -d '+db+' --no-owner --no-acl --exit-on-error'
@@ -221,11 +227,11 @@ def backup(stack, *, resume=True):
     folder.mkdir(parents=True, mode=0o700)
     active = stack.running_apps()
     snapshots = {}; files = {}
-    # All four databases must be reachable before stopping the application.
+    # All active databases must be reachable before stopping the application.
     required = sum(int(stack.psql(s, 'SELECT pg_database_size(current_database());')) for s in SERVICES)
     if shutil.disk_usage(folder).free < required*1.25+512*1024**2:
         raise RuntimeError('Insufficient free space for a complete backup')
-    stack.dc('stop', *APPS, what='Pause writers for a consistent backup')
+    stack.dc('stop', *writer_apps(stack), what='Pause writers for a consistent backup')
     complete = False
     try:
         shutil.copyfile(stack.env_file, folder/'config.env'); os.chmod(folder/'config.env', 0o600)
@@ -253,18 +259,22 @@ def verify_backup(folder, token, *, supported=SCHEMAS):
     folder = Path(folder).resolve()
     if not (folder/'COMPLETE').is_file(): raise RuntimeError('Backup is incomplete')
     manifest = json.loads((folder/'manifest.json').read_text())
-    if manifest.get('format') != 1 or set(manifest.get('schema_versions', {})) != set(SERVICES):
+    recorded_services = set(manifest.get('schema_versions', {}))
+    if manifest.get('format') != 1 or recorded_services not in (set(SERVICES), set(SERVICES) | {'queue'}):
         raise RuntimeError('Unknown backup format')
     if manifest.get('internal_token_sha256') != hashlib.sha256(token.encode()).hexdigest():
         raise RuntimeError('Backup requires its original INTERNAL_TOKEN; no databases were changed')
-    expected_files = {s+'.dump' for s in SERVICES} | {'config.env', 'effective-config.json'}
+    # Old backups keep their retired history, even though the new runtime has
+    # no queue service. Validate its checksum rather than trusting an extra file.
+    expected_files = {s+'.dump' for s in recorded_services} | {'config.env', 'effective-config.json'}
     if set(manifest.get('files', {})) != expected_files: raise RuntimeError('Backup file list is invalid')
     for name, expected in manifest['files'].items():
         path = folder/name
         if path.is_symlink() or not path.is_file() or sha256(path) != expected['sha256'] or path.stat().st_size != expected['bytes']:
             raise RuntimeError('Backup checksum mismatch: '+name)
     for service, schema in manifest['schema_versions'].items():
-        if not 2 <= schema <= supported[service]:
+        maximum = 2 if service == 'queue' else supported[service]
+        if not 2 <= schema <= maximum:
             raise RuntimeError('Backup schema is incompatible with this application: '+service)
     return manifest
 
@@ -291,7 +301,7 @@ def check_role_isolation(stack):
             if other == service: continue
             if stack.psql(service, "SELECT has_database_privilege('"+service+"', '"+other+"', 'CONNECT');") != 'f':
                 raise RuntimeError('Cross-database access is allowed')
-    print('PASS: four service logins, no elevated roles, no cross-database CONNECT')
+    print('PASS: three service logins, no elevated roles, no cross-database CONNECT')
 
 
 def test_restore(stack, folder):
@@ -317,7 +327,7 @@ def confirm(word):
 def restore(stack, folder):
     folder = Path(folder).resolve(); manifest = verify_backup(folder, stack.token())
     inspect_images(stack)
-    print('Restore replaces all current accounts, timetables, queues and notifications.')
+    print('Restore replaces all current accounts, timetables and notifications.')
     confirm('RESTORE')
     before = backup(stack, resume=False)
     print('Pre-restore backup:', before, '\nApplication stays stopped if any restore step fails.')
@@ -327,7 +337,7 @@ def restore(stack, folder):
         compare_snapshots(manifest['snapshots'][service], stack.snapshot(service))
     stack.dc('up', '-d', '--wait', '--wait-timeout', '300', what='Start restored application')
     smoke(stack)
-    print('PASS: all four databases restored and application verified')
+    print('PASS: all three databases restored and application verified')
 
 
 def smoke(stack):
@@ -363,10 +373,10 @@ def deploy(stack):
     inspect_images(stack)
     containers = stack.containers()
     db_exists = any(c['Config']['Labels']['com.docker.compose.service'] == 'postgres' for c in containers)
-    presence = [stack.psql(s, "SELECT to_regclass('public.schema_migrations') IS NOT NULL;") == 't' for s in SERVICES] if db_exists else [False]*4
+    presence = [stack.psql(s, "SELECT to_regclass('public.schema_migrations') IS NOT NULL;") == 't' for s in SERVICES] if db_exists else [False]*len(SERVICES)
     if any(presence) and not all(presence): raise RuntimeError('Partial database initialization; inspect the migration before deployment')
     folder = backup(stack, resume=False) if all(presence) else None
-    stack.dc('up', '-d', '--wait', '--wait-timeout', '300', what='Deploy verified images')
+    stack.dc('up', '-d', '--wait', '--wait-timeout', '300', '--remove-orphans', what='Deploy verified images')
     smoke(stack)
     persist_release(stack)
     private_json(stack.state/'deployment.json', {'current':stack.tag, 'previous':previous,
@@ -389,7 +399,7 @@ def rollback(stack, tag, disposable=False):
     print('Rollback verified; IMAGE_TAG saved in the environment file:', tag)
 
 
-def migrate_four(source, target):
+def migrate_databases(source, target):
     if source.project == target.project: raise RuntimeError('Source and destination projects must differ')
     if source.token() != target.token(): raise RuntimeError('Copy the existing INTERNAL_TOKEN into production first')
     disk_check()
@@ -404,6 +414,8 @@ def migrate_four(source, target):
     print('Migration pauses the source app, preserves all old volumes, and prepares the destination without exposing web.')
     confirm('MIGRATE')
     source_active = source.running_apps()
+    retired_source_active = [c['Config']['Labels']['com.docker.compose.service'] for c in source.containers()
+        if c['State']['Running'] and c['Config']['Labels']['com.docker.compose.service'] == 'queue-db']
     folder = backup(source, resume=False)
     complete = False
     try:
@@ -417,12 +429,16 @@ def migrate_four(source, target):
         if versions != SCHEMAS: raise RuntimeError('Unexpected migrated schema versions')
         private_json(target.state/'migration.json', {'source_project':source.project, 'backup':str(folder),
             'schema_versions':versions, 'at':stamp()})
+        retired_databases = [name for name in ('queue-db',) if name in source.config['services']]
+        if retired_databases:
+            source.dc('stop', *retired_databases, what='Stop retired source database; preserve its volume')
         complete = True
         print('PASS: source dumps and destination data matched before upgrades; schemas:', json.dumps(versions))
         print('Original volumes remain intact. Source app is paused. Run deploy_production.sh to start the destination web gateway.')
     finally:
         if not complete:
             target.dc('stop', *APPS, what='Keep partial destination unexposed')
+            if retired_source_active: source.dc('start', *retired_source_active, what='Resume original source database')
             if source_active: source.dc('start', *source_active, what='Resume unchanged source')
 
 
@@ -498,7 +514,7 @@ def main():
             (test_restore if args.action == 'test-restore' else restore)(stack, args.backup)
         elif args.action == 'deploy': deploy(stack)
         elif args.action == 'rollback': rollback(stack, args.image_tag, args.disposable)
-        elif args.action == 'migrate': migrate_four(source, stack)
+        elif args.action == 'migrate': migrate_databases(source, stack)
         elif args.action == 'diagnose': diagnose(stack)
         elif args.action == 'budget': budget(stack)
 

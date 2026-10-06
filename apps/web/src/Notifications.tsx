@@ -1,5 +1,5 @@
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
-import {ArrowUpRight,BellRing,CheckCheck,ChevronLeft,ChevronRight,Clock,Megaphone,RefreshCw,Settings2,Smartphone,Trash2,X} from 'lucide-react';
+import {ArrowUpRight,BellRing,CheckCheck,ChevronLeft,ChevronRight,ClipboardList,Clock,Megaphone,Send,RefreshCw,Settings2,Smartphone,Trash2,X} from 'lucide-react';
 import {api,ApiError,actionKey} from './api';
 import {errorText} from './i18n';
 import {nt,type NKey} from './notificationCopy';
@@ -7,7 +7,7 @@ import {deviceMeta,disablePush,enablePush,reconnectPush,registration,supportIssu
 import {Badge,Button,Confirm,Dialog,Empty,Field,IconButton,Loading,Notice,useApp} from './ui';
 
 export type NotificationItem={
- id:string;category:'schedule'|'queue'|'announcements'|'questions';title:string;title_en?:string;body:string;body_en?:string;
+ id:string;category:'schedule'|'assignments'|'announcements'|'questions';title:string;title_en?:string;body:string;body_en?:string;
  route:string;important:boolean;read:boolean;created_at:string;expires_at:string;author?:string;
 };
 type InboxData={items:NotificationItem[];unread:number;total:number;popups:NotificationItem[];as_of:string};
@@ -19,13 +19,14 @@ const useInbox=()=>useContext(NotificationContext);
 const useN=()=>{const {lang}=useApp();return (key:NKey)=>nt(lang,key);};
 function nError(lang:'ru'|'en',e:unknown){
  const key=({push_permission:'cancelled',push_not_configured:'serverOff',push_device_limit:'deviceLimit',
- push_account_conflict:'accountConflict',validation:'validation'} as Record<string,NKey>)[(e as ApiError).code];
+ push_account_conflict:'accountConflict',telegram_not_configured:'telegramOff',telegram_link_unavailable:'telegramUnavailable',
+ telegram_not_connected:'telegramNotConnected',telegram_disabled:'telegramDisabled',too_many_attempts:'tooMany',validation:'validation'} as Record<string,NKey>)[(e as ApiError).code];
  return key?nt(lang,key):e instanceof ApiError?errorText(lang,e):nt(lang,'deviceError');
 }
 function content(item:NotificationItem,lang:'ru'|'en',field:'title'|'body'){
  return lang==='en'?(item[field+'_en' as 'title_en'|'body_en']||item[field]):item[field];
 }
-function routeTo(value:string){location.hash=['#schedule','#queues','#notifications','#questions'].includes(value)?value:'#notifications';}
+function routeTo(value:string){location.hash=['#schedule','#assignments','#today','#notifications','#questions'].includes(value)?value:'#notifications';}
 
 export function NotificationProvider({children}:{children:ReactNode}){
  const {user,lang,refresh}=useApp();const t=useN();
@@ -34,8 +35,9 @@ export function NotificationProvider({children}:{children:ReactNode}){
  const [prompt,setPrompt]=useState(false),[dismissed,setDismissed]=useState<string[]>([]),[sessionTick,setSessionTick]=useState(0);
  useEffect(()=>{const changed=()=>setSessionTick(v=>v+1);window.addEventListener('campus-session-changed',changed);return()=>window.removeEventListener('campus-session-changed',changed);},[]);
  const reload=useCallback(()=>setTick(v=>v+1),[]);
+ useEffect(()=>{setData(empty);setDismissed([]);setLoading(true);setError('');setOffset(0);setUnreadOnly(false);setPrompt(false);},[user.id]);
  useEffect(()=>{let active=true,busy=false;
-   async function load(){if(busy)return;busy=true;try{
+   async function load(){if(busy||document.hidden)return;busy=true;try{
      const value=await api<InboxData>('/api/notifications/inbox?offset='+offset+'&unread_only='+unreadOnly);
      if(active){setData(value);setError('');}
    }catch(e){if(active){setError(nError(lang,e));if(['unauthorized','account_inactive'].includes((e as ApiError).code)){setData(empty);refresh();}}}
@@ -96,7 +98,7 @@ export function NotificationInbox({compact=false,onNavigate}:{compact?:boolean;o
  <div className="notification-toolbar"><div className="tabs"><button className={!unreadOnly?'active':''} onClick={()=>{setUnreadOnly(false);setOffset(0);}}>{t('all')}</button><button className={unreadOnly?'active':''} onClick={()=>{setUnreadOnly(true);setOffset(0);}}>{t('unread')} <span>{data.unread}</span></button></div><div className="button-row"><IconButton label={t('refresh')} onClick={reload}><RefreshCw size={17}/></IconButton><a className="icon-button" aria-label={t('settings')} title={t('settings')} href="#preferences" onClick={onNavigate}><Settings2 size={18}/></a><Button variant="secondary" disabled={!data.unread} busy={busy} onClick={()=>void mark()}><CheckCheck size={17}/>{t('markAll')}</Button></div></div>
  {(error||localError)&&<Notice error>{error||localError}</Notice>}
  {loading?<Loading/>:data.items.length===0?<Empty title={t('empty')} description={t('emptyHint')}/>:<div className="notification-list">{data.items.map(item=><article className={'notification-card '+(item.read?'read':'unread')} key={item.id}>
- <span className={'notification-symbol '+item.category}>{item.category==='announcements'?<Megaphone size={20}/>:item.category==='queue'?<BellRing size={20}/>:<Clock size={20}/>}</span>
+ <span className={'notification-symbol '+item.category}>{item.category==='announcements'?<Megaphone size={20}/>:item.category==='assignments'?<ClipboardList size={20}/>:<Clock size={20}/>}</span>
  <div className="notification-copy"><div className="notification-meta"><span>{t(item.category)}</span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString(lang==='ru'?'ru-RU':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</time>{!item.read&&<i aria-label={t('unread')}/>}</div>
  <h3>{content(item,lang,'title')}</h3><p>{content(item,lang,'body')}</p>{item.author&&<small>{item.author}</small>}
  <div className="button-row">{item.route!=='#notifications'&&<Button variant="ghost" onClick={()=>{void mark([item.id]);routeTo(item.route);onNavigate?.();}}>{t('open')}<ArrowUpRight size={15}/></Button>}{!item.read&&<Button variant="ghost" busy={busy} onClick={()=>void mark([item.id])}><CheckCheck size={15}/>{t('markRead')}</Button>}</div></div>
@@ -105,36 +107,61 @@ export function NotificationInbox({compact=false,onNavigate}:{compact?:boolean;o
  </section>;
 }
 
-type Preferences={revision:number;schedule:boolean;queue:boolean;announcements:boolean;questions:boolean;important_popups:boolean;show_details:boolean;quiet_enabled:boolean;quiet_start:string;quiet_end:string;timezone:string;language:'ru'|'en'};
-type Device={id:string;label:string;updated_at:string};
+type Preferences={revision:number;schedule:boolean;assignments:boolean;telegram_enabled:boolean;announcements:boolean;questions:boolean;important_popups:boolean;show_details:boolean;quiet_enabled:boolean;quiet_start:string;quiet_end:string;timezone:string;language:'ru'|'en'};
+type Device={id:string;label:string;updated_at:string;expires_at:string|null;active:boolean};
+type TelegramStatus={enabled:boolean;bot_username:string;connected:boolean;chat_label?:string;last_error?:string};
+type TelegramLink={url:string;expires_at:string};
 export function NotificationSettings(){
  const t=useN(),{user,lang,notify}=useApp(),{reload}=useInbox();
  const [pref,setPref]=useState<Preferences|null>(null),[config,setConfig]=useState<PushConfig|null>(null),[devices,setDevices]=useState<Device[]>([]);
+ const [telegram,setTelegram]=useState<TelegramStatus|null>(null),[link,setLink]=useState<TelegramLink|null>(null),[clock,setClock]=useState(Date.now());
  const [connected,setConnected]=useState(false),[label,setLabel]=useState(()=>/Android|iPhone|iPad/.test(navigator.userAgent)?'Phone':'Computer');
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[attempt,setAttempt]=useState(0);
  const issue=supportIssue();
- useEffect(()=>{let active=true;void Promise.all([api<Preferences>('/api/notifications/preferences'),api<PushConfig>('/api/notifications/config'),api<Device[]>('/api/notifications/subscriptions')]).then(async([p,c,d])=>{
-   if(!active)return;setPref(p);setConfig(c);setDevices(d);
-   const meta=deviceMeta();setConnected(Boolean(meta?.owner===user.id&&meta.key===c.public_key&&d.some(x=>x.id===meta.id)&&!supportIssue()&&Notification.permission==='granted'));setError('');
+ useEffect(()=>{setPref(null);setDevices([]);setTelegram(null);setLink(null);setConnected(false);},[user.id]);
+ useEffect(()=>{let active=true;void Promise.all([api<Preferences>('/api/notifications/preferences'),api<PushConfig>('/api/notifications/config'),api<Device[]>('/api/notifications/subscriptions'),api<TelegramStatus>('/api/notifications/telegram')]).then(async([p,c,d,tg])=>{
+   if(!active)return;setPref(p);setConfig(c);setDevices(d);setTelegram(tg);
+   const meta=deviceMeta();setConnected(Boolean(meta?.owner===user.id&&meta.key===c.public_key&&d.some(x=>x.id===meta.id&&x.active)&&!supportIssue()&&Notification.permission==='granted'));setError('');
  }).catch(e=>active&&setError(nError(lang,e)));return()=>{active=false;};},[user.id,attempt,lang]);
  async function run(job:()=>Promise<unknown>,message?:string){setBusy(true);setError('');try{await job();if(message)notify(message);}catch(e){setError(nError(lang,e));}finally{setBusy(false);}}
  async function refreshDevices(){setDevices(await api<Device[]>('/api/notifications/subscriptions'));reload();}
- const bool=(key:'schedule'|'queue'|'announcements'|'questions'|'important_popups'|'show_details'|'quiet_enabled',text:NKey)=><label className="notification-toggle"><span>{t(text)}</span><input type="checkbox" checked={pref?.[key]||false} onChange={e=>setPref(p=>p&&({...p,[key]:e.target.checked}))}/></label>;
+ useEffect(()=>{if(!link||!telegram?.enabled||telegram.connected)return;let active=true,busy=false;
+   async function check(){if(busy||document.hidden||Date.now()>=new Date(link!.expires_at).getTime())return;busy=true;
+     try{const status=await api<TelegramStatus>('/api/notifications/telegram');if(!active)return;setTelegram(status);
+       if(status.connected){setLink(null);const p=await api<Preferences>('/api/notifications/preferences');if(active)setPref(p);}}
+     catch(e){if(active)setError(nError(lang,e));}finally{busy=false;}}
+   const timer=setInterval(()=>{setClock(Date.now());void check();},3000);
+   const visible=()=>{setClock(Date.now());void check();};document.addEventListener('visibilitychange',visible);
+   return()=>{active=false;clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
+ },[link,telegram?.enabled,telegram?.connected,lang]);
+ const telegramError=telegram?.last_error?({bot_blocked:'telegramBlocked',account_inactive:'telegramInactive',rate_limited:'telegramDelayed',delivery_delayed:'telegramDelayed',delivery_failed:'telegramFailed',bot_changed:'telegramBotChanged',webhook_conflict:'telegramWebhook',bot_unavailable:'telegramUnavailable'} as Record<string,NKey>)[telegram.last_error]:undefined;
+ const bool=(key:'schedule'|'assignments'|'telegram_enabled'|'announcements'|'questions'|'important_popups'|'show_details'|'quiet_enabled',text:NKey)=><label className="notification-toggle"><span>{t(text)}</span><input type="checkbox" checked={pref?.[key]||false} onChange={e=>setPref(p=>p&&({...p,[key]:e.target.checked}))}/></label>;
  return <section className="panel notification-settings" id="notification-settings"><div className="section-title"><div><h2>{t('settings')}</h2><p className="muted">{t('preferencesHint')}</p></div><BellRing size={24}/></div>
  {error&&<Notice error>{error}<button className="text-link" onClick={()=>setAttempt(n=>n+1)}>{t('retry')}</button></Notice>}
- {!pref||!config?<Loading/>:<>
+ {!pref||!config||!telegram?<Loading/>:<>
  <div className="push-device-card"><div className="section-title"><h3><Smartphone size={19}/> {t('push')}</h3><Badge tone={connected?'green':'neutral'}>{t(connected?'enabled':'disabled')}</Badge></div><p>{t('pushHint')}</p>
  {issue&&<Notice>{t(issue)}</Notice>}{!config.enabled&&<Notice>{t('serverOff')}</Notice>}
  {!connected&&<Field label={t('deviceName')}><input maxLength={60} value={label} onChange={e=>setLabel(e.target.value)}/></Field>}
  <div className="button-row">{connected?<Button variant="secondary" busy={busy} onClick={()=>void run(async()=>{await disablePush(user.id);setConnected(false);await refreshDevices();})}>{t('disable')}</Button>:<Button disabled={Boolean(issue)||!config.enabled||!label.trim()} busy={busy} onClick={()=>void run(async()=>{await enablePush(config,user.id,label);setConnected(true);await refreshDevices();})}><BellRing size={17}/>{t('enable')}</Button>}
  <Button variant="secondary" busy={busy} disabled={!connected} onClick={()=>void run(async()=>{await api('/api/notifications/test','POST',{});reload();},t('testSent'))}>{t('test')}</Button></div></div>
+ <div className="push-device-card telegram-device-card"><div className="section-title"><h3><Send size={19}/> {t('telegram')}</h3><Badge tone={telegram.connected?'green':'neutral'}>{t(telegram.connected?'enabled':'disabled')}</Badge></div>
+ <p>{t('telegramHint')}</p>{telegram.bot_username&&<small className="muted">@{telegram.bot_username}{telegram.chat_label?' · '+telegram.chat_label:''}</small>}
+ {!telegram.enabled&&<Notice>{t('telegramOff')}</Notice>}{telegramError&&<Notice>{t(telegramError)}</Notice>}
+ {link&&!telegram.connected&&<div className="telegram-link-card"><p>{t(clock>=new Date(link.expires_at).getTime()?'telegramExpired':'telegramWaiting')}</p>
+ {clock<new Date(link.expires_at).getTime()&&<a className="button" href={link.url} target="_blank" rel="noopener noreferrer">{t('telegramOpen')}<ArrowUpRight size={16}/></a>}
+ <small>{t('telegramLinkHint')}</small><time dateTime={link.expires_at}>{t('deviceExpiry')} {new Date(link.expires_at).toLocaleTimeString(lang==='ru'?'ru-RU':'en-GB',{hour:'2-digit',minute:'2-digit'})}</time></div>}
+ <div className="button-row">{!telegram.connected&&<Button disabled={!telegram.enabled} busy={busy} onClick={()=>void run(async()=>{setLink(await api<TelegramLink>('/api/notifications/telegram/link','POST',{}));setClock(Date.now());})}><Send size={17}/>{t('telegramConnect')}</Button>}
+ {(telegram.connected||telegram.chat_label)&&<Button variant="secondary" busy={busy} onClick={()=>void run(async()=>{await api('/api/notifications/telegram','DELETE');setLink(null);setTelegram(await api<TelegramStatus>('/api/notifications/telegram'));setPref(await api<Preferences>('/api/notifications/preferences'));reload();})}>{t('telegramDisconnect')}</Button>}
+ <Button variant="secondary" busy={busy} disabled={!telegram.connected||!pref.telegram_enabled} onClick={()=>void run(async()=>{await api('/api/notifications/telegram/test','POST',{});reload();},t('telegramTestSent'))}>{t('telegramTest')}</Button>
+ <IconButton label={t('refresh')} onClick={()=>setAttempt(v=>v+1)}><RefreshCw size={17}/></IconButton></div></div>
  <form onSubmit={e=>{e.preventDefault();void run(async()=>{setPref(await api<Preferences>('/api/notifications/preferences','PUT',pref));reload();},t('saved'));}}>
- <h3>{t('categories')}</h3>{bool('schedule','schedule')}{bool('queue','queue')}{bool('announcements','announcements')}{bool('questions','questions')}
+ {telegram.connected&&bool('telegram_enabled','telegramEnabled')}
+ <h3>{t('categories')}</h3>{bool('schedule','schedule')}{bool('assignments','assignments')}{bool('announcements','announcements')}{bool('questions','questions')}
  <div className="notification-setting-section">{bool('important_popups','popups')}{bool('show_details','details')}<p className="field-hint">{t('detailsHint')}</p></div>
  <div className="notification-setting-section">{bool('quiet_enabled','quiet')}<p className="field-hint">{t('quietHint')}</p>{pref.quiet_enabled&&<div className="form-grid"><Field label={t('from')}><input type="time" required value={pref.quiet_start} onChange={e=>setPref({...pref,quiet_start:e.target.value})}/></Field><Field label={t('until')}><input type="time" required value={pref.quiet_end} onChange={e=>setPref({...pref,quiet_end:e.target.value})}/></Field></div>}</div>
  <div className="form-grid"><Field label={t('timezone')}><select value={pref.timezone} onChange={e=>setPref({...pref,timezone:e.target.value})}>{Array.from(new Set([pref.timezone,'Europe/Moscow','Europe/Kaliningrad','Europe/Samara','Asia/Yekaterinburg','UTC'])).map(z=><option key={z}>{z}</option>)}</select></Field><Field label={t('language')}><select value={pref.language} onChange={e=>setPref({...pref,language:e.target.value as 'ru'|'en'})}><option value="ru">Русский</option><option value="en">English</option></select></Field></div>
  <Button type="submit" busy={busy}>{t('save')}</Button></form>
- <div className="notification-setting-section"><h3>{t('devices')}</h3><p className="field-hint">{t('devicesHint')}</p>{!devices.length?<p className="muted">{t('noDevices')}</p>:devices.map(d=><div className="push-device-row" key={d.id}><Smartphone size={19}/><div><strong>{d.label}</strong><small>{new Date(d.updated_at).toLocaleDateString(lang==='ru'?'ru-RU':'en-GB')}</small></div><Button variant="ghost" busy={busy} onClick={()=>void run(async()=>{if(d.id===deviceMeta()?.id){await disablePush(user.id);setConnected(false);}else await api('/api/notifications/subscriptions/'+d.id,'DELETE');await refreshDevices();})}>{t('remove')}</Button></div>)}</div>
+ <div className="notification-setting-section"><h3>{t('devices')}</h3><p className="field-hint">{t('devicesHint')}</p>{!devices.length?<p className="muted">{t('noDevices')}</p>:devices.map(d=><div className="push-device-row" key={d.id}><Smartphone size={19}/><div><strong>{d.label}</strong><small>{t(d.active?'deviceActive':'deviceExpired')}{d.expires_at?' · '+t('deviceExpiry')+' '+new Date(d.expires_at).toLocaleString(lang==='ru'?'ru-RU':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):' · '+t('deviceExpiryUnknown')}</small></div><Button variant="ghost" busy={busy} onClick={()=>void run(async()=>{if(d.id===deviceMeta()?.id){await disablePush(user.id);setConnected(false);}else await api('/api/notifications/subscriptions/'+d.id,'DELETE');await refreshDevices();})}>{t('remove')}</Button></div>)}</div>
  <div className="install-hint"><Smartphone size={25}/><div><h3>{t('install')}</h3><p>{t('installHint')}</p></div></div>
  </>}</section>;
 }

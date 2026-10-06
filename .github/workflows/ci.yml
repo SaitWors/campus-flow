@@ -25,7 +25,7 @@ jobs:
           pip install httpx==0.28.1
           npm install --prefix /tmp/campus-production-browser --no-audit --no-fund playwright@1.58.2
           /tmp/campus-production-browser/node_modules/.bin/playwright install --with-deps chromium
-      - name: Single PostgreSQL, PR2 migration, bounded resources, backup and image rollback
+      - name: Single PostgreSQL, schema migration, bounded resources, backup and rollback compatibility
         run: |
           mkdir -p test-results
           set -o pipefail
@@ -71,13 +71,14 @@ jobs:
         run: python -m scripts.verify_community
       - name: PR3 schedule, calendar and security workflow
         run: python -m scripts.verify_pr3
+      - name: Study hub, assignments and private progress workflow
+        run: python -m scripts.verify_study
       - name: Real offline Russian to English translation
         run: python -m scripts.verify_translation
       - name: Verify API schemas and private route boundary
         run: |
           curl --fail http://localhost:8080/api/auth/openapi.json -o /tmp/auth-schema.json
           curl --fail http://localhost:8080/api/schedule/openapi.json -o /tmp/schedule-schema.json
-          curl --fail http://localhost:8080/api/queues/openapi.json -o /tmp/queue-schema.json
           curl --fail http://localhost:8080/api/notifications/openapi.json -o /tmp/notifications-schema.json
           test -z "$(docker compose port translator 5000 2>/dev/null || true)"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/internal/events)" = 404
@@ -96,6 +97,7 @@ jobs:
           node scripts/check_ui.cjs || browser_status=1
           node scripts/check_community_ui.cjs || browser_status=1
           node scripts/check_notifications_ui.cjs || browser_status=1
+          node scripts/check_study_ui.cjs || browser_status=1
           exit "$browser_status"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -132,6 +134,7 @@ jobs:
       - run: python -m scripts.verify_notifications
       - run: python -m scripts.verify_community
       - run: python -m scripts.verify_pr3
+      - run: python -m scripts.verify_study
       - name: Lightweight translation fallback
         run: |
           python - <<'PY'
@@ -141,7 +144,7 @@ jobs:
               r=c.post('/api/schedule/title-preview',json={'title':'Технологии баз данных'},headers={'X-CSRF-Token':s['csrf']})
               assert r.status_code==200 and r.json()['translation_enabled'] is False
               assert r.json()['translation_pending'] is False
-          print('PASS: default stack without translator, all four APIs and explicit manual-translation fallback')
+          print('PASS: default stack without translator, all three APIs and explicit manual-translation fallback')
           PY
       - name: Logs on failure
         if: failure()

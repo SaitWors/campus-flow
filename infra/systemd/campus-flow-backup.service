@@ -1,0 +1,13 @@
+[Unit]
+Description=Verified external Campus Flow backup
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/campus-flow
+EnvironmentFile=/etc/campus-flow-backup.env
+ExecStart=/usr/bin/python3 /opt/campus-flow/scripts/external_backup.py
+UMask=0077
+TimeoutStartSec=30min
+Nice=10

@@ -10,3 +10,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><
 import './notifications.css';
 
 import './pr3.css';
+import './study.css';

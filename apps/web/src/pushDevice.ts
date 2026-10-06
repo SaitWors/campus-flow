@@ -1,6 +1,6 @@
 import {api,ApiError} from './api';
 export type PushConfig={enabled:boolean;public_key:string};
-export type DeviceMeta={owner:string;id:string;key:string;label:string};
+export type DeviceMeta={owner:string;id:string;key:string;label:string;expires_at?:string|null};
 export function deviceMeta():DeviceMeta|null {try{return JSON.parse(localStorage.getItem('cf-push-device')||'null');}catch{return null;}}
 function storeDevice(value:DeviceMeta|null){try{if(value)localStorage.setItem('cf-push-device',JSON.stringify(value));else localStorage.removeItem('cf-push-device');}catch{/* optional device preference */}}
 export function supportIssue(){
@@ -23,9 +23,9 @@ function applicationKey(value:string){
 }
 async function saveSubscription(sub:PushSubscription,owner:string,key:string,label:string){
  const value=sub.toJSON();
- const {id}=await api<{id:string}>('/api/notifications/subscriptions','POST',{endpoint:value.endpoint,keys:value.keys,label});
+ const {id,expires_at}=await api<{id:string;expires_at?:string|null}>('/api/notifications/subscriptions','POST',{endpoint:value.endpoint,keys:value.keys,label});
  await setWorkerOwner(owner);
- storeDevice({owner,id,key,label});
+ storeDevice({owner,id,key,label,expires_at});
  return id;
 }
 export async function enablePush(config:PushConfig,owner:string,label:string){

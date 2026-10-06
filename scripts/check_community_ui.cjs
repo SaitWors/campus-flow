@@ -2,14 +2,14 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
-const base='http://localhost:8080';
+const base=process.env.CAMPUS_BASE_URL||'http://localhost:8080';
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
  const errors=[];
  try{
   const guest=await browser.newContext({baseURL:base,viewport:{width:390,height:844}});
   guest.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
-  await guest.addInitScript(()=>{if(location.origin==='http://localhost:8080'){localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}});
+  await guest.addInitScript(()=>{try{localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}catch{}});
   const page=await guest.newPage();page.setDefaultTimeout(20000);
   await page.goto('/');
   await page.getByRole('button',{name:'View timetable as a guest'}).click();
@@ -34,7 +34,7 @@ const base='http://localhost:8080';
   const student=await browser.newContext({baseURL:base,viewport:{width:390,height:844}});
   for(const [context,email,password] of [[admin,'admin@example.test','Integration-test-password-2026'],[student,'student0@example.test','Integration-test-password-2026new']]){
    context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
-   await context.addInitScript(()=>{if(location.origin==='http://localhost:8080'){localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}});
+   await context.addInitScript(()=>{try{localStorage.setItem('cf-language','en');localStorage.setItem('cf-theme','dark');}catch{}});
    assert((await context.request.post('/api/auth/login',{data:{email,password}})).ok());
   }
   const a=await admin.newPage(),s=await student.newPage();a.setDefaultTimeout(20000);s.setDefaultTimeout(20000);
@@ -73,7 +73,6 @@ const base='http://localhost:8080';
   }
   await s.setViewportSize({width:390,height:844});
   await s.screenshot({path:'test-results/questions-mobile.png',fullPage:true});
-  console.log('VISUAL_QUESTIONS_JPEG:'+(await s.screenshot({type:'jpeg',quality:60})).toString('base64'));
   await mobile.getByRole('button',{name:'Close question',exact:true}).click();
   await mobile.getByRole('button',{name:'Reopen',exact:true}).waitFor();
   await mobile.getByRole('button',{name:'Close',exact:true}).click();

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, DateTime, Integer, Boolean, JSON
+from sqlalchemy import String, DateTime, Integer, Boolean, JSON, Text, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from services.common.core import now, uid
 
@@ -58,6 +58,32 @@ class Subject(Base):
     key:Mapped[str]=mapped_column(String(240),primary_key=True)
     title:Mapped[str]=mapped_column(String(120))
     title_en:Mapped[str]=mapped_column(String(120),default='')
+    teacher:Mapped[str]=mapped_column(String(100),default='')
+    requirements:Mapped[str]=mapped_column(Text,default='')
+    links:Mapped[list]=mapped_column(JSON,default=list)
+    revision:Mapped[int]=mapped_column(Integer,default=1)
+
+class Assignment(Base):
+    __tablename__='assignments'
+    id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
+    subject_key:Mapped[str]=mapped_column(ForeignKey('subjects.key'),index=True)
+    title:Mapped[str]=mapped_column(String(160))
+    description:Mapped[str]=mapped_column(Text,default='')
+    due_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True,index=True)
+    subgroup:Mapped[int]=mapped_column(Integer,default=0)
+    material_url:Mapped[str]=mapped_column(String(500),default='')
+    revision:Mapped[int]=mapped_column(Integer,default=1)
+    archived:Mapped[bool]=mapped_column(Boolean,default=False,index=True)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=now)
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=now)
+
+class AssignmentProgress(Base):
+    __tablename__='assignment_progress'
+    assignment_id:Mapped[str]=mapped_column(ForeignKey('assignments.id'),primary_key=True)
+    user_id:Mapped[str]=mapped_column(String(36),primary_key=True)
+    status:Mapped[str]=mapped_column(String(20),default='not_started')
+    revision:Mapped[int]=mapped_column(Integer,default=1)
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=now)
 
 class TimePresets(Base):
     __tablename__='time_presets'

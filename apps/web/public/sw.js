@@ -2,7 +2,7 @@
    and authenticated app pages are never cached. */
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
-const allowedRoutes = new Set(['#schedule', '#queues', '#notifications', '#questions']);
+const allowedRoutes = new Set(['#today', '#schedule', '#assignments', '#subjects', '#notifications', '#questions']);
 function ownerStore(write, value) {
   return new Promise(resolve => {
     const open = indexedDB.open('campus-push', 1);

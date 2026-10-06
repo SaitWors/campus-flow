@@ -1,11 +1,11 @@
-"""Read-only production checks. Never creates accounts, lessons or queues."""
+"""Read-only production checks. Never creates accounts or lessons."""
 import argparse
 import json
 import time
 import urllib.error
 import urllib.request
 
-SCHEMAS = {'auth': 3, 'schedule': 3, 'queues': 2, 'notifications': 2}
+SCHEMAS = {'auth': 3, 'schedule': 4, 'notifications': 3}
 
 
 def check(base, expected_commit=None):
@@ -48,6 +48,7 @@ def check(base, expected_commit=None):
         raise RuntimeError('Public calendar is unavailable')
     get('/api/auth/users', 401)
     get('/internal/events', 404)
+    get('/api/queues', 404)
     result = {'commit': web['commit'], 'services': versions, 'requests':len(timings),
               'max_read_ms':max(timings), 'mean_read_ms':round(sum(timings)/len(timings), 2)}
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -7,6 +7,8 @@ import os
 import re
 import time
 import uuid
+import threading
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 
@@ -19,6 +21,28 @@ from sqlalchemy.orm import sessionmaker
 
 request_context = ContextVar('campus_request_id', default='')
 request_logger = logging.getLogger('campus.requests')
+_internal_client = None
+_client_lock = threading.Lock()
+
+
+def internal_client():
+    global _internal_client
+    with _client_lock:
+        if _internal_client is None or _internal_client.is_closed:
+            _internal_client = httpx.Client(
+                timeout=httpx.Timeout(5, connect=2), trust_env=False,
+                limits=httpx.Limits(max_connections=24, max_keepalive_connections=12,
+                                    keepalive_expiry=30),
+            )
+        return _internal_client
+
+
+def close_internal_client():
+    global _internal_client
+    with _client_lock:
+        if _internal_client is not None:
+            _internal_client.close()
+            _internal_client = None
 
 
 def now():
@@ -113,9 +137,8 @@ def internal(request: Request):
 def remote(base, path, **kwargs):
     try:
         # These URLs address only our private service network, never the Internet.
-        with httpx.Client(timeout=httpx.Timeout(5, connect=2), trust_env=False) as client:
-            response = client.request(kwargs.pop('method', 'GET'), base + path, headers={
-                'X-Internal-Token': service_secret(), 'X-Request-ID': request_context.get()}, **kwargs)
+        response = internal_client().request(kwargs.pop('method', 'GET'), base + path, headers={
+            'X-Internal-Token': service_secret(), 'X-Request-ID': request_context.get()}, **kwargs)
         if response.status_code >= 400:
             if response.status_code in (401, 403, 404, 409, 422):
                 try:
@@ -143,7 +166,14 @@ def manager(user):
 
 
 def setup_app(title, engine, lifespan):
-    app = FastAPI(title=title, version='1.0.0', lifespan=lifespan, docs_url='/docs', redoc_url=None)
+    @asynccontextmanager
+    async def managed_lifespan(app):
+        try:
+            async with lifespan(app):
+                yield
+        finally:
+            close_internal_client()
+    app = FastAPI(title=title, version='1.1.0', lifespan=managed_lifespan, docs_url='/docs', redoc_url=None)
     log_requests = os.getenv('REQUEST_LOGGING', 'false').lower() == 'true'
     if log_requests and not request_logger.handlers:
         handler = logging.StreamHandler()

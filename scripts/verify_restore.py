@@ -5,8 +5,7 @@ with httpx.Client(base_url='http://localhost:8080',trust_env=False) as c:
     assert login.status_code==200,login.status_code
     assert len(c.get('/api/auth/users').json())==8
     assert len(c.get('/api/schedule/rules').json())==1
-    assert c.get('/api/queues/activity/log').json()
-    print('Restored accounts, schedule and queue history verified.')
+    print('Restored accounts, schedule history verified.')
     inbox=c.get('/api/notifications/inbox').json()
     assert any(n['title']=='CI important update' for n in inbox['items'])
     assert c.get('/api/notifications/audit').json()

@@ -13,7 +13,7 @@
 .notification-card.unread{border-left:3px solid var(--blue);background:var(--surface2)}
 .notification-symbol{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;color:var(--blue);background:var(--blue-soft);flex:none}
 .notification-symbol.announcements{color:var(--amber);background:var(--amber-bg)}
-.notification-symbol.queue{color:var(--lab);background:var(--lab-bg)}
+.notification-symbol.assignments{color:var(--lab);background:var(--lab-bg)}
 .notification-copy{min-width:0;flex:1}.notification-copy h3{margin:7px 0}.notification-copy p,.announcement-history p,.announcement-preview p{white-space:pre-wrap;font-size:.875rem;overflow-wrap:anywhere}
 .notification-copy>small{display:block;color:var(--muted);margin-top:8px}
 .notification-meta{display:flex;align-items:center;gap:12px;font-size:.75rem;color:var(--muted);flex-wrap:wrap}
@@ -103,3 +103,5 @@
  .question-summary p{font-size:.82rem}.question-card>svg{width:16px;flex-shrink:0}
  .conversation-message{max-width:97%;padding:12px}.conversation-messages{max-height:42dvh}
 }
+
+.telegram-device-card>small{display:block;margin:-2px 0 16px}.telegram-link-card{display:flex;align-items:flex-start;gap:12px;flex-direction:column;padding:16px;margin:16px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.telegram-link-card p{margin:0}.telegram-link-card small,.telegram-link-card time{color:var(--muted);font-size:.8rem}.telegram-link-card .button{gap:8px}.push-device-row small{line-height:1.5}

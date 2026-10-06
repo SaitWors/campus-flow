@@ -4,8 +4,8 @@ let lang = 'ru';
 try { if (localStorage.getItem('cf-language') === 'en') lang = 'en'; } catch {}
 const $ = id => document.getElementById(id);
 const copy = {
-  ru: {title:'Сохранённое расписание',warning:'Это копия, она может устареть. Очереди и изменения доступны при подключении.',saved:'Сохранено',online:'Открыть сайт',delete:'Удалить копию',empty:'Сохранённой копии нет. Сохраните её в настройках сайта при подключении.',none:'На сохранённый период занятий нет.',group:'Подгруппа',all:'Вся группа',cancelled:'Отменена',pending:'Уточняется',lecture:'Лекция',lab:'Лабораторная',practice:'Практика'},
-  en: {title:'Saved timetable',warning:'This is a snapshot and may be outdated. Queues and changes require a connection.',saved:'Saved',online:'Open website',delete:'Delete copy',empty:'No saved copy. Save one in settings while online.',none:'No classes in this saved period.',group:'Subgroup',all:'Whole group',cancelled:'Cancelled',pending:'Unconfirmed',lecture:'Lecture',lab:'Lab',practice:'Practice'}
+  ru: {title:'Сохранённое расписание',warning:'Это копия, она может устареть. Изменения и личные работы доступны при подключении.',saved:'Сохранено',online:'Открыть сайт',delete:'Удалить копию',empty:'Сохранённой копии нет. Сохраните её в настройках сайта при подключении.',none:'На сохранённый период занятий нет.',group:'Подгруппа',all:'Вся группа',cancelled:'Отменена',pending:'Уточняется',lecture:'Лекция',lab:'Лабораторная',practice:'Практика'},
+  en: {title:'Saved timetable',warning:'This is a snapshot and may be outdated. Changes and personal assignments require a connection.',saved:'Saved',online:'Open website',delete:'Delete copy',empty:'No saved copy. Save one in settings while online.',none:'No classes in this saved period.',group:'Subgroup',all:'Whole group',cancelled:'Cancelled',pending:'Unconfirmed',lecture:'Lecture',lab:'Lab',practice:'Practice'}
 };
 function text(tag, value) { const node=document.createElement(tag); node.textContent=value; return node; }
 function render() {

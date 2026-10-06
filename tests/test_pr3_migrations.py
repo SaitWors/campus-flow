@@ -10,7 +10,7 @@ def test_v2_catalog_upgrade_preserves_lessons_and_backfills(tmp_path,monkeypatch
     from services.schedule.catalog import migrate_catalog, DEFAULT_PRESETS
     engine,DB=database('schedule');legacy=MetaData()
     for name,table in Base.metadata.tables.items():
-        if name not in ('subjects','time_presets'):table.to_metadata(legacy)
+        if name not in ('subjects','time_presets','assignments','assignment_progress'):table.to_metadata(legacy)
     migrate(engine,SimpleNamespace(metadata=legacy),(lambda _:None,))
     with DB.begin() as db:
         db.add(Rule(id='old-rule',data={'title':'Мат. анализ','title_en':'Analysis'},revision=8))

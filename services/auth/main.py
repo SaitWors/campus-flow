@@ -333,6 +333,18 @@ class PushCheck(Input):
     user_id:str=Field(min_length=36,max_length=36)
     session_hash:str=Field(pattern=r'^[0-9a-f]{64}$')
 
+class NotificationCheck(Input):
+    user_id:str=Field(min_length=36,max_length=36)
+
+@app.post('/internal/notification-check')
+def notification_check(data:NotificationCheck,request:Request):
+    internal(request)
+    with DB() as db:
+        user=db.get(User,data.user_id)
+        if not user or user.status!='active':
+            return {'active':False}
+        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup,'group_role':user_json(user)['group_role']}
+
 @app.post('/internal/push-check')
 def push_check(data:PushCheck,request:Request):
     internal(request)
@@ -340,8 +352,9 @@ def push_check(data:PushCheck,request:Request):
         session=db.get(Session,data.session_hash)
         user=db.get(User,data.user_id)
         if not session or session.user_id!=data.user_id or session.expires<=now() or not user or user.status!='active':
-            return {'active':False}
-        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup,'group_role':user_json(user)['group_role']}
+            return {'active':False,'expires_at':session.expires.isoformat()+'Z' if session and session.user_id==data.user_id else None}
+        return {'active':True,'id':user.id,'role':user.role,'subgroup':user.subgroup,'group_role':user_json(user)['group_role'],
+                'expires_at':session.expires.isoformat()+'Z'}
 
 
 @app.get('/internal/question-recipients')

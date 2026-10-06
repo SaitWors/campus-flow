@@ -2,13 +2,13 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs/promises');
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {})});
  try{
-  const context=await browser.newContext({baseURL:'http://localhost:8080',viewport:{width:1360,height:900}});
+  const context=await browser.newContext({baseURL:process.env.CAMPUS_BASE_URL||'http://localhost:8080',viewport:{width:1360,height:900}});
   const errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   const login=await context.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}});
   if(!login.ok())throw new Error('CI sign-in failed');
-  await context.addInitScript(()=>{if(location.origin==='http://localhost:8080')localStorage.setItem('cf-language','en');});
+  await context.addInitScript(()=>{try{localStorage.setItem('cf-language','en');}catch{}});
   const page=await context.newPage();page.setDefaultTimeout(20000);
   await page.goto('/#preferences');
   await fs.mkdir('test-results',{recursive:true});

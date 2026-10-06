@@ -43,4 +43,4 @@ def run(urls):
 
 
 if __name__=='__main__':
-    run({k:'http://localhost:8080' for k in ('auth','schedule','queue','notifications')})
+    run({k:'http://localhost:8080' for k in ('auth','schedule','notifications')})

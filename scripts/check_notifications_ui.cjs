@@ -2,20 +2,20 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
-const base='http://localhost:8080';
+const base=process.env.CAMPUS_BASE_URL||'http://localhost:8080';
 (async()=>{
- const context=await chromium.launchPersistentContext('',{headless:true,channel:'chromium',baseURL:base,viewport:{width:1360,height:900}});
+ const context=await chromium.launchPersistentContext('',{headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']}: {}),channel:'chromium',baseURL:base,viewport:{width:1360,height:900}});
  try{
   const errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   const session=await context.request.post('/api/auth/login',{data:{email:'admin@example.test',password:'Integration-test-password-2026'}});
   assert(session.ok());const me=await session.json();
-  await context.addInitScript(()=>{if(location.origin==='http://localhost:8080'){
+  await context.addInitScript(()=>{try{
     localStorage.setItem('cf-language','en');
     localStorage.setItem('cf-theme','dark');
     if('Notification' in window){const original=Notification.requestPermission.bind(Notification);
       Notification.requestPermission=(...args)=>{localStorage.setItem('ci-permission-requests',String(Number(localStorage.getItem('ci-permission-requests')||0)+1));return original(...args);};
     }
-  }});
+  }catch{}});
   const page=await context.newPage();page.setDefaultTimeout(20000);
   await page.goto('/#notifications');
   await page.getByRole('heading',{name:'Notifications',exact:true}).waitFor();
@@ -40,10 +40,9 @@ const base='http://localhost:8080';
   await popup.waitFor({state:'hidden'});
   await fs.mkdir('test-results',{recursive:true});
   await page.screenshot({path:'test-results/announcements-desktop.png',fullPage:true});
-  console.log('VISUAL_DESKTOP_JPEG:'+(await page.screenshot({type:'jpeg',quality:55,fullPage:false})).toString('base64'));
   for(const width of [360,390,768]){
    await page.setViewportSize({width,height:844});
-   for(const route of ['schedule','calendar','queues','questions','notifications','preferences','admin']){
+   for(const route of ['schedule','calendar','today','assignments','subjects','questions','notifications','preferences','admin']){
     await page.goto('/#'+route);
     await page.locator('main h1').waitFor();
     if(route==='preferences')await page.getByRole('heading',{name:'Notification settings',exact:true}).waitFor();
@@ -51,7 +50,6 @@ const base='http://localhost:8080';
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow '+route+' '+width);
     if(width===390&&['notifications','preferences','admin','calendar'].includes(route))await page.screenshot({path:'test-results/mobile-'+route+'.png',fullPage:true});
-    if(width===390&&route==='notifications')console.log('VISUAL_MOBILE_JPEG:'+(await page.screenshot({type:'jpeg',quality:60,fullPage:false})).toString('base64'));
    }
   }
   await page.setViewportSize({width:390,height:844});
@@ -77,6 +75,11 @@ const base='http://localhost:8080';
   assert(swResponse.headers()['content-security-policy']);
   // Browser permission prompt must never be requested automatically.
   assert.equal(await page.evaluate(()=>Number(localStorage.getItem('ci-permission-requests')||0)),0);
+  if(process.env.CAMPUS_UI_ONLY==='1'){
+   assert.deepEqual(errors,[]);
+   console.log('PASS: announcement/inbox/settings/mobile UI and no automatic permission prompt; service-worker push lifecycle excluded by explicit UI-only mode');
+   return;
+  }
   // Full Chromium (new headless), not the minimal headless shell: the shell
   // lacks the platform notification service required by a real showNotification.
   await context.grantPermissions(['notifications'],{origin:base});
