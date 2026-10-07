@@ -615,3 +615,35 @@ def test_malformed_production_snapshots_are_rejected_before_restore_mutation(tmp
     monkeypatch.setattr(p, 'inspect_images', forbidden); monkeypatch.setattr(p, 'backup', forbidden)
     monkeypatch.setattr(p, 'confirm', forbidden)
     with pytest.raises(RuntimeError, match='snapshot'): p.restore(stack, folder)
+
+
+def test_local_restore_preserves_piped_confirmation_when_header_helper_drains_stdin(tmp_path):
+    import os
+    import shutil
+    import subprocess
+    import sys
+    checkout = tmp_path/'checkout'; scripts = checkout/'scripts'; scripts.mkdir(parents=True)
+    shutil.copyfile(Path(__file__).resolve().parents[1]/'scripts'/'restore.sh', scripts/'restore.sh')
+    marker = tmp_path/'safety-backup-ran'
+    (scripts/'backup.sh').write_text('set -eu\nprintf safety > "$SAFETY_BACKUP_MARKER"\nexit 73\n')
+    (checkout/'.env').write_text('INTERNAL_TOKEN=fixture-only\n')
+    folder = checkout/'backups'/'fixture'; folder.mkdir(parents=True)
+    for name in ('COMPLETE','manifest.json','config.env','auth.dump','schedule.dump','notifications.dump'):
+        (folder/name).write_text('{}' if name == 'manifest.json' else 'fixture')
+    binary = tmp_path/'bin'; binary.mkdir()
+    docker = binary/'docker'
+    docker.write_text('#!'+sys.executable+'\n'+'''import json,sys
+if 'backup-header' in sys.argv:
+    # Compose run -T remains interactive: even a helper that never reads stdin
+    # can consume the piped confirmation through Docker's stdin forwarding.
+    sys.stdin.buffer.read()
+    print(json.dumps({'has_archive':False,'materials':{}}))
+''')
+    docker.chmod(0o755)
+    environment = {**os.environ,'PATH':str(binary)+os.pathsep+os.environ['PATH'],
+        'SAFETY_BACKUP_MARKER':str(marker)}
+    result = subprocess.run(['bash','-c',r'printf "RESTORE\n" | bash scripts/restore.sh "$1"',
+        'fixture',str(folder)],cwd=checkout,env=environment,capture_output=True,text=True,timeout=10)
+    assert marker.exists(), result.stdout+result.stderr
+    assert marker.read_text() == 'safety'
+    assert result.returncode == 73, result.stdout+result.stderr

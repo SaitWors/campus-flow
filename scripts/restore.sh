@@ -18,7 +18,7 @@ fi
 verify=(docker compose run --rm --no-deps -T --user "$(id -u):$(id -g)" --volume "$backup_abs:/backup:ro" schedule python -m scripts.materials_archive)
 # Every checksum, archive path/type and per-file hash is checked before even
 # the safety backup stops writers. The only data in this variable is metadata.
-header="$("${verify[@]}" backup-header /backup "${legacy_args[@]}")"
+header="$("${verify[@]}" backup-header /backup "${legacy_args[@]}" </dev/null)"
 for service in auth schedule notifications; do
     docker run --rm --network none --volume "$backup_abs:/backup:ro" postgres:17-alpine pg_restore --list "/backup/$service.dump" > /dev/null
 done

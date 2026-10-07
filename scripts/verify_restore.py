@@ -1,4 +1,10 @@
 """Validate a restored CI fixture; not for the live group database."""
+from pathlib import Path
+import sys
+
+# Direct script execution places scripts/ on sys.path, not the project root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import httpx
 with httpx.Client(base_url='http://localhost:8080',trust_env=False) as c:
     login=c.post('/api/auth/login',json={'email':'admin@example.test','password':'Integration-test-password-2026'})

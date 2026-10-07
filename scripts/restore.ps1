@@ -6,7 +6,7 @@ $item = Get-Item $BackupPath
 if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Backup directory may not be a symlink.' }
 $backupAbs = (Resolve-Path $BackupPath).Path
 $legacyArgs = @(Get-LegacyBackupArgs $backupAbs); $userArgs = @(Get-BackupUserArgs)
-$header = (& docker compose run --rm --no-deps -T @userArgs --volume ($backupAbs + ':/backup:ro') schedule python -m scripts.materials_archive backup-header /backup @legacyArgs) -join "`n"
+$header = (& docker compose run --rm --no-deps -T --interactive=false @userArgs --volume ($backupAbs + ':/backup:ro') schedule python -m scripts.materials_archive backup-header /backup @legacyArgs) -join "`n"
 if ($LASTEXITCODE -ne 0) { throw 'Backup verification failed. No application data was changed.' }
 foreach ($service in @('auth','schedule','notifications')) {
     & docker run --rm --network none --volume ($backupAbs + ':/backup:ro') postgres:17-alpine pg_restore --list ('/backup/' + $service + '.dump') | Out-Null
