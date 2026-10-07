@@ -53,7 +53,7 @@ def academic_cluster(tmp_path):
     urls = {name: 'http://127.0.0.1:'+str(port) for name, port in ports.items()}
     env = {**os.environ, 'INTERNAL_TOKEN': TOKEN, 'SETUP_KEY': SETUP_KEY,
            'AUTH_URL': urls['auth'], 'TRANSLATION_WORKER': 'false',
-           'COOKIE_SECURE': 'false'}
+           'COOKIE_SECURE': 'false', 'MATERIALS_DIR': str(tmp_path/'materials')}
     processes, logs, clients = [], [], []
 
     def client():
@@ -67,7 +67,8 @@ def academic_cluster(tmp_path):
             logs.append(log)
             process = subprocess.Popen([
                 sys.executable, '-m', 'uvicorn', 'services.'+service+'.main:app',
-                '--host', '127.0.0.1', '--port', str(port)], cwd=root,
+                '--host', '127.0.0.1', '--port', str(port),
+                *(['--h11-max-incomplete-event-size','65536'] if service=='schedule' else [])], cwd=root,
                 env={**env, 'DATABASE_URL': 'sqlite:///'+str(tmp_path/(service+'.db'))},
                 stdout=log, stderr=subprocess.STDOUT)
             processes.append(process)

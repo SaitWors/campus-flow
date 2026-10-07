@@ -85,6 +85,27 @@ class AssignmentProgress(Base):
     revision:Mapped[int]=mapped_column(Integer,default=1)
     updated_at:Mapped[datetime]=mapped_column(DateTime,default=now)
 
+class Material(Base):
+    __tablename__='materials'
+    id:Mapped[str]=mapped_column(String(36),primary_key=True,default=uid)
+    subject_key:Mapped[str]=mapped_column(ForeignKey('subjects.key'),index=True)
+    title:Mapped[str]=mapped_column(String(160))
+    description:Mapped[str]=mapped_column(Text,default='')
+    category:Mapped[str]=mapped_column(String(20),default='other')
+    original_filename:Mapped[str]=mapped_column(String(240))
+    mime_type:Mapped[str]=mapped_column(String(100))
+    size_bytes:Mapped[int]=mapped_column(Integer)
+    sha256:Mapped[str]=mapped_column(String(64))
+    search_text:Mapped[str]=mapped_column(Text)
+    uploader_name:Mapped[str]=mapped_column(String(80))
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=now,index=True)
+    revision:Mapped[int]=mapped_column(Integer,default=1)
+
+class MaterialStorage(Base):
+    """A single row serializes final publishes and removals across processes."""
+    __tablename__='material_storage'
+    id:Mapped[int]=mapped_column(Integer,primary_key=True)
+
 class TimePresets(Base):
     __tablename__='time_presets'
     id:Mapped[int]=mapped_column(Integer,primary_key=True,default=1)

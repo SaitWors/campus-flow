@@ -13,6 +13,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 data=root/'.dev-data'
 data.mkdir(exist_ok=True)
+(data/'materials').mkdir(exist_ok=True, mode=0o700)
 env={**os.environ,'INTERNAL_TOKEN':'local-development-internal-token-32-characters',
      'SETUP_KEY':'local-development-setup-key', 'APP_ORIGIN':'http://localhost:5173,http://127.0.0.1:5173',
      'COOKIE_SECURE':'false','AUTH_URL':'http://127.0.0.1:8101','SCHEDULE_URL':'http://127.0.0.1:8102','TRANSLATION_WORKER':'false'}
@@ -24,7 +25,9 @@ signal.signal(signal.SIGINT,stop)
 signal.signal(signal.SIGTERM,stop)
 try:
     for service,port in [('auth',8101),('schedule',8102),('notifications',8104)]:
-        processes.append(subprocess.Popen([sys.executable,'-m','uvicorn','services.'+service+'.main:app','--port',str(port),'--host','127.0.0.1'],cwd=root,env={**env,'DATABASE_URL':'sqlite:///'+str(data/(service+'.db'))}))
+        command=[sys.executable,'-m','uvicorn','services.'+service+'.main:app','--port',str(port),'--host','127.0.0.1']
+        if service=='schedule':command+=['--h11-max-incomplete-event-size','65536']
+        processes.append(subprocess.Popen(command,cwd=root,env={**env, **({'MATERIALS_DIR':str(data/'materials')} if service=='schedule' else {}),'DATABASE_URL':'sqlite:///'+str(data/(service+'.db'))}))
     print('Development setup key: local-development-setup-key',flush=True)
     while True:
         if any(p.poll() is not None for p in processes):raise RuntimeError('A development service stopped')

@@ -16,12 +16,12 @@ def cluster(tmp_path):
         with socket.socket() as s:
             s.bind(('127.0.0.1',0));ports[service]=s.getsockname()[1]
     urls={k:'http://127.0.0.1:'+str(v) for k,v in ports.items()}
-    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'EVENT_WORKER':'true','TRANSLATION_WORKER':'false','COOKIE_SECURE':'false'}
+    env={**os.environ,'INTERNAL_TOKEN':'integration-internal-token-at-least-32-characters','SETUP_KEY':'integration-setup-key-long-enough','AUTH_URL':urls['auth'],'SCHEDULE_URL':urls['schedule'],'EVENT_WORKER':'true','TRANSLATION_WORKER':'false','COOKIE_SECURE':'false','MATERIALS_DIR':str(tmp_path/'materials')}
     processes=[];logs=[]
     try:
         for service in ports:
             log=open(tmp_path/(service+'.log'),'w');logs.append(log)
-            p=subprocess.Popen([sys.executable,'-m','uvicorn','services.'+service+'.main:app','--host','127.0.0.1','--port',str(ports[service])],cwd=root,env={**env,'DATABASE_URL':'sqlite:///'+str(tmp_path/(service+'.db'))},stdout=log,stderr=subprocess.STDOUT)
+            p=subprocess.Popen([sys.executable,'-m','uvicorn','services.'+service+'.main:app','--host','127.0.0.1','--port',str(ports[service]),*(['--h11-max-incomplete-event-size','65536'] if service=='schedule' else [])],cwd=root,env={**env,'DATABASE_URL':'sqlite:///'+str(tmp_path/(service+'.db'))},stdout=log,stderr=subprocess.STDOUT)
             processes.append(p)
             deadline=time.monotonic()+30
             while time.monotonic()<deadline:
@@ -53,3 +53,6 @@ def test_real_http_workflow(cluster):
 
     from scripts.verify_study import run as study
     study(urls)
+
+    from scripts.verify_materials import run as materials
+    materials(urls)

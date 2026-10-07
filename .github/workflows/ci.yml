@@ -73,6 +73,8 @@ jobs:
         run: python -m scripts.verify_pr3
       - name: Study hub, assignments and private progress workflow
         run: python -m scripts.verify_study
+      - name: Subject material permissions, streaming upload and private files
+        run: python -m scripts.verify_materials
       - name: Real offline Russian to English translation
         run: python -m scripts.verify_translation
       - name: Verify API schemas and private route boundary
@@ -98,6 +100,7 @@ jobs:
           node scripts/check_community_ui.cjs || browser_status=1
           node scripts/check_notifications_ui.cjs || browser_status=1
           node scripts/check_study_ui.cjs || browser_status=1
+          node scripts/check_materials_ui.cjs || browser_status=1
           exit "$browser_status"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -119,7 +122,7 @@ jobs:
         run: docker compose down --volumes
   lightweight:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -135,6 +138,22 @@ jobs:
       - run: python -m scripts.verify_community
       - run: python -m scripts.verify_pr3
       - run: python -m scripts.verify_study
+      - run: python -m scripts.verify_materials
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Lightweight material browser workflow
+        env:
+          NODE_PATH: /tmp/campus-browser/node_modules
+        run: |
+          npm install --prefix /tmp/campus-browser --no-audit --no-fund playwright@1.58.2
+          /tmp/campus-browser/node_modules/.bin/playwright install --with-deps chromium
+          node scripts/check_materials_ui.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: campus-flow-lightweight-materials
+          path: test-results/
+          if-no-files-found: ignore
       - name: Lightweight translation fallback
         run: |
           python - <<'PY'

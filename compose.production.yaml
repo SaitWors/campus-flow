@@ -10,6 +10,7 @@ x-app: &app
   restart: unless-stopped
   init: true
   read_only: true
+  user: '10001:10001'
   tmpfs: ["/tmp:size=32m,mode=1777"]
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
@@ -82,11 +83,15 @@ services:
   schedule:
     <<: *app
     mem_limit: 224m
-    command: [uvicorn, services.schedule.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log]
+    command: [uvicorn, services.schedule.main:app, --host, 0.0.0.0, --port, '8000', --no-proxy-headers, --no-access-log, --h11-max-incomplete-event-size, '65536']
     environment:
       <<: *environment
       DATABASE_URL: postgresql+psycopg://schedule:${SCHEDULE_DB_PASSWORD}@postgres:5432/schedule
       TRANSLATION_WORKER: 'false'
+      MATERIALS_DIR: /var/lib/campus/materials
+      MATERIAL_MAX_FILE_BYTES: ${MATERIAL_MAX_FILE_BYTES:-52428800}
+      MATERIAL_STORAGE_QUOTA_BYTES: ${MATERIAL_STORAGE_QUOTA_BYTES:-5368709120}
+    volumes: [materials_data:/var/lib/campus/materials]
     depends_on:
       postgres: {condition: service_healthy}
       auth: {condition: service_healthy}
@@ -129,6 +134,7 @@ services:
     networks: [services_net]
 
 volumes:
+  materials_data:
   production_data:
 networks:
   services_net:

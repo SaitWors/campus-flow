@@ -51,3 +51,46 @@ def test_argon_memory_gate_serializes_hash_and_verify_and_releases_errors(monkey
         release.set()
         with pytest.raises(ValueError): first.result(timeout=3)
         assert other.result(timeout=3)
+
+
+def production_config():
+    services = {}
+    for name in ['auth','schedule','notifications','web','postgres']:
+        services[name] = {'image':'campus-'+name+':'+'a'*40, 'mem_limit':160*1024**2,
+            'cpus':.5, 'pids_limit':96, 'user':'10001:10001', 'read_only':True,
+            'logging':{'driver':'json-file','options':{'max-size':'10m','max-file':'3'}}}
+    services['web']['ports'] = [{'host_ip':'127.0.0.1','target':8080}]
+    services['postgres']['environment'] = {key:'p'+str(i)*32 for i,key in enumerate([
+        'POSTGRES_PASSWORD','AUTH_DB_PASSWORD','SCHEDULE_DB_PASSWORD','NOTIFICATIONS_DB_PASSWORD'])}
+    for name in ['auth','schedule','notifications']:
+        services[name]['environment'] = {'DB_POOL_SIZE':'2','DB_MAX_OVERFLOW':'2','DB_POOL_PRE_PING':'true'}
+    services['auth']['environment'].update({'APP_ORIGIN':'https://campus.example','COOKIE_SECURE':'true',
+        'INTERNAL_TOKEN':'a'*32,'SETUP_KEY':'b'*32})
+    services['schedule']['environment']['TRANSLATION_WORKER'] = 'false'
+    return {'services':services}
+
+
+def test_production_requires_private_persistent_material_storage():
+    from scripts import production as p
+    config = production_config()
+    with pytest.raises(RuntimeError, match='material'):
+        p.validate_config(config)
+    config['services']['schedule']['environment']['MATERIALS_DIR'] = '/var/lib/campus/materials'
+    config['services']['schedule']['volumes'] = [{'type':'volume','source':'fixture_materials',
+        'target':'/var/lib/campus/materials','read_only':False}]
+    assert p.validate_config(config) == 'a'*40
+    config['services']['auth']['volumes'] = [{'type':'volume','source':'fixture_materials',
+        'target':'/private','read_only':True}]
+    with pytest.raises(RuntimeError, match='material'):
+        p.validate_config(config)
+
+
+@pytest.mark.parametrize('field,value', [('read_only',False),('user','0:0')])
+def test_material_writer_keeps_container_readonly_and_unprivileged(field, value):
+    from scripts import production as p
+    config = production_config(); schedule = config['services']['schedule']
+    schedule['environment']['MATERIALS_DIR'] = '/var/lib/campus/materials'
+    schedule['volumes'] = [{'type':'volume','source':'fixture_materials','target':'/var/lib/campus/materials','read_only':False}]
+    schedule[field] = value
+    with pytest.raises(RuntimeError, match='material'):
+        p.validate_config(config)
