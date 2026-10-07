@@ -5,11 +5,11 @@ ENV APP_COMMIT=$VCS_REF APP_BUILD_DATE=$BUILD_DATE
 LABEL org.opencontainers.image.source="https://github.com/SaitWors/campus-flow" \
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.created=$BUILD_DATE \
-      io.campus-flow.schemas='{"auth":3,"schedule":4,"notifications":3}'
+      io.campus-flow.schemas='{"auth":3,"schedule":5,"notifications":3}'
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 COPY services/requirements.lock services/requirements.lock
-RUN pip install --no-cache-dir -r services/requirements.lock && useradd --create-home --uid 10001 campus
+RUN pip install --no-cache-dir -r services/requirements.lock && useradd --create-home --uid 10001 campus && install -d -o 10001 -g 10001 -m 0700 /var/lib/campus/materials
 COPY services services
 COPY scripts scripts
 USER campus

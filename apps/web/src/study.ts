@@ -1,4 +1,4 @@
-import type {Kind,Lesson,User} from './types';
+import type {Kind,Lang,Lesson,MaterialCategory,User} from './types';
 export type StudyFilters={subgroup:number;kind:Kind|'all';view:'day'|'week'|'month';compact:boolean;collapsePast:boolean;collapseEmpty:boolean};
 type LessonCountdown={value:number;unit:'minutes';remainder:null;remainderUnit:null}|{value:number;unit:'hours';remainder:number;remainderUnit:'minutes'}|{value:number;unit:'days';remainder:number;remainderUnit:'hours'};
 export function lessonCountdown(minutes:number):LessonCountdown{
@@ -49,4 +49,31 @@ export function nextLesson(lessons:Lesson[],now:Date,subgroup:number):{lesson:Le
  if(!lesson)return null;
  const state=Date.parse(lesson.starts_at)<=instant?'current':'upcoming';
  return {lesson,state,minutes:Math.ceil((Date.parse(state==='current'?lesson.ends_at:lesson.starts_at)-instant)/60000)};
+}
+export const materialAccept='.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.gif,.heic,.zip,.mp3,.m4a,.ogg,.wav,.mp4,.webm';
+export function canManageMaterials(user:User|null){return !!user&&user.status==='active'&&['admin','head','deputy'].includes(user.role);}
+export function canPreviewMaterial(mime:string){return ['image/png','image/jpeg','image/webp','image/gif'].includes(mime);}
+export function materialFileError(file:{name:string;size:number},maxBytes:number):string|null{
+ if(!file.name.trim()||file.name.length>240||/[\\/\x00-\x1f\x7f]/.test(file.name))return 'material_filename_invalid';
+ if(!file.size)return 'material_empty';
+ if(file.size>maxBytes)return 'material_too_large';
+ const extension=file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+ if(!materialAccept.split(',').includes(extension))return 'material_type_not_allowed';
+ return null;
+}
+export function materialTitle(filename:string){return (filename.replace(/\.[^.]+$/,'').trim()||filename).slice(0,160);}
+export function materialListPath(subjectKey:string,category:MaterialCategory|'all',query:string,offset:number){
+ const parameters=new URLSearchParams({limit:'20',offset:String(offset)});
+ if(category!=='all')parameters.set('category',category);
+ if(query.trim())parameters.set('q',query.trim().slice(0,160));
+ return `/api/schedule/subjects/${encodeURIComponent(subjectKey)}/materials?${parameters}`;
+}
+export function materialUploadPath(subjectKey:string,metadata:{filename:string;title:string;description:string;category:MaterialCategory}){
+ const parameters=new URLSearchParams({...metadata,title:metadata.title.trim()});
+ return `/api/schedule/subjects/${encodeURIComponent(subjectKey)}/materials?${parameters}`;
+}
+export function formatFileSize(bytes:number,lang:Lang){
+ const units=lang==='ru'?['Б','КиБ','МиБ','ГиБ']:['B','KiB','MiB','GiB'];let value=Math.max(0,bytes),unit=0;
+ while(value>=1024&&unit<units.length-1){value/=1024;unit++;}
+ return new Intl.NumberFormat(lang,{maximumFractionDigits:unit?1:0}).format(value)+' '+units[unit];
 }

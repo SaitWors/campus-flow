@@ -5,7 +5,7 @@ import time
 import urllib.error
 import urllib.request
 
-SCHEMAS = {'auth': 3, 'schedule': 4, 'notifications': 3}
+SCHEMAS = {'auth': 3, 'schedule': 5, 'notifications': 3}
 
 
 def check(base, expected_commit=None):

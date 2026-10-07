@@ -14,7 +14,7 @@ def backup_fixture(folder):
         path = folder/name
         path.write_text('Private backup fixture: '+name)
         files[name] = {'sha256': p.sha256(path), 'bytes': path.stat().st_size}
-    p.private_json(folder/'manifest.json', {'format': 1, 'schema_versions': p.SCHEMAS,
+    p.private_json(folder/'manifest.json', {'format': 1, 'schema_versions': {**p.SCHEMAS,'schedule':4},
         'files': files, 'internal_token_sha256': hashlib.sha256(b'fixture-token').hexdigest()})
     (folder/'COMPLETE').touch()
     return folder
@@ -72,3 +72,27 @@ def test_invalid_remote_destination_is_rejected_before_transport(tmp_path, host,
     def forbidden(*args, **kwargs): pytest.fail('Invalid destination reached transport')
     with pytest.raises(ValueError):
         external.upload_verified(tmp_path/'copy.tar.gz', host, path, runner=forbidden)
+
+
+def test_external_copy_contains_the_validated_material_archive_and_inventory(tmp_path):
+    from scripts import materials_archive as a
+    folder = backup_fixture(tmp_path/'production-materials')
+    source = tmp_path/'materials'; source.mkdir()
+    name = '12345678-1234-4234-8234-123456789abc.blob'
+    (source/name).write_bytes(b'private lecture content')
+    with (folder/'materials.tar').open('wb') as output:
+        inventory = a.create_archive(source, output)
+    manifest = json.loads((folder/'manifest.json').read_text())
+    manifest['schema_versions']['schedule'] = 5; manifest['materials'] = inventory
+    manifest['files']['materials.tar'] = {'sha256':p.sha256(folder/'materials.tar'), 'bytes':(folder/'materials.tar').stat().st_size}
+    p.private_json(folder/'manifest.json', manifest)
+    archive = external.archive_backup(folder, 'fixture-token')
+    with tarfile.open(archive) as outer:
+        assert outer.extractfile('materials.tar').read() == (folder/'materials.tar').read_bytes()
+        assert json.load(outer.extractfile('manifest.json'))['materials'] == inventory
+    (folder/'materials.tar').write_bytes(b'corrupted private material archive')
+    with pytest.raises(RuntimeError, match='checksum'):
+        external.archive_backup(folder, 'fixture-token')
+    # A previously verified archive survives a later invalid source backup.
+    with tarfile.open(archive) as outer:
+        assert outer.extractfile('materials.tar').read().startswith(name.encode())

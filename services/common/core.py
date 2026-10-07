@@ -165,7 +165,7 @@ def manager(user):
         fail('forbidden', 403)
 
 
-def setup_app(title, engine, lifespan):
+def setup_app(title, engine, lifespan, *, upload_body_limit=None):
     @asynccontextmanager
     async def managed_lifespan(app):
         try:
@@ -195,8 +195,11 @@ def setup_app(title, engine, lifespan):
                 allowed = [v.strip().rstrip('/') for v in os.getenv('APP_ORIGIN', 'http://localhost:8080').split(',')]
                 if (origin and origin.rstrip('/') not in allowed) or request.headers.get('sec-fetch-site') == 'cross-site':
                     response = JSONResponse({'detail': 'origin_forbidden'}, status_code=403)
-                elif request.headers.get('content-length', '0').isdigit() and int(request.headers.get('content-length', '0')) > 65536:
-                    response = JSONResponse({'detail': 'body_too_large'}, status_code=413)
+                elif request.headers.get('content-length', '0').isdigit():
+                    material_limit = upload_body_limit(request) if upload_body_limit else None
+                    limit = material_limit if material_limit is not None else 65536
+                    if int(request.headers.get('content-length', '0')) > limit:
+                        response = JSONResponse({'detail': 'material_too_large' if material_limit is not None else 'body_too_large'}, status_code=413)
             if response is None:
                 response = await call_next(request)
             status = response.status_code

@@ -17,7 +17,7 @@ def test_schema4_upgrade_preserves_subjects_and_lessons_and_removes_obsolete_jso
     engine, db = database('schedule')
     legacy = MetaData()
     for name, table in Base.metadata.tables.items():
-        if name not in ('subjects', 'assignments', 'assignment_progress'):
+        if name not in ('subjects', 'assignments', 'assignment_progress', 'materials', 'material_storage'):
             table.to_metadata(legacy)
     migrate(engine, SimpleNamespace(metadata=legacy), (lambda _: None, lambda _: None))
     with engine.begin() as conn:
@@ -38,7 +38,7 @@ def test_schema4_upgrade_preserves_subjects_and_lessons_and_removes_obsolete_jso
     # A freshly started service executes the actual migration chain.
     with TestClient(m.app) as client:
         with db() as session:
-            assert session.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 4
+            assert session.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 5
         row = client.get('/internal/occurrences/old-occurrence', headers={
             'X-Internal-Token': 'migration-internal-token-at-least-32-characters'})
         assert row.status_code == 200 and 'queue_enabled' not in row.json()
@@ -53,9 +53,11 @@ def test_schema4_upgrade_preserves_subjects_and_lessons_and_removes_obsolete_jso
         subject = session.execute(text("SELECT key,title,title_en,teacher,requirements,links,revision FROM subjects WHERE key='old-subject'")).one()
         assert subject.key == 'old-subject' and subject.title_en == 'Old subject'
         assert subject.requirements == '' and json.loads(subject.links) == [] and subject.revision == 1
-        assert session.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 4
+        assert session.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 5
         assert session.scalar(text('SELECT COUNT(*) FROM assignments')) == 0
         assert session.scalar(text('SELECT COUNT(*) FROM assignment_progress')) == 0
+        assert session.scalar(text('SELECT COUNT(*) FROM materials')) == 0
+        assert session.scalar(text('SELECT COUNT(*) FROM material_storage')) == 1
     engine.dispose()
 
 

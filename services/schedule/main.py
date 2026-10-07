@@ -19,6 +19,7 @@ from services.schedule.catalog import migrate_catalog, remember_subject, subject
 from services.schedule.academic import (migrate_academics, lesson_data, SubjectDetailsInput,
     AssignmentInput, AssignmentUpdate, ProgressInput, AssignmentAudienceInput, subject_row, progress_row,
     assignment_row, assignment_values, assignment_event_data, assignment_visible, is_manager)
+from services.schedule.materials import migrate_materials, initialize_materials, register_material_routes, upload_body_limit
 
 engine, DB=database('schedule')
 translator=TitleTranslator(DB)
@@ -26,7 +27,8 @@ DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester
 
 @asynccontextmanager
 async def lifespan(app):
-    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),migrate_catalog,migrate_academics))
+    service_secret();migrate(engine,Base,(lambda conn: TitleTranslation.__table__.create(conn,checkfirst=True),migrate_catalog,migrate_academics,migrate_materials))
+    initialize_materials(app,DB)
     with DB.begin() as db:
         if not db.get(Settings,1):db.add(Settings(id=1,data=DEFAULT_SETTINGS))
     translator.start()
@@ -35,7 +37,8 @@ async def lifespan(app):
     finally:
         translator.stop()
 
-app=setup_app('Campus Flow · Schedule',engine,lifespan)
+app=setup_app('Campus Flow · Schedule',engine,lifespan,upload_body_limit=upload_body_limit)
+register_material_routes(app,lambda:DB)
 
 def settings(db,lock=False):
     return db.scalar(select(Settings).where(Settings.id==1).with_for_update()) if lock else db.get(Settings,1)

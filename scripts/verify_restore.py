@@ -23,3 +23,14 @@ with httpx.Client(base_url='http://localhost:8080',trust_env=False) as c:
     assert len(c.get('/api/schedule/time-presets').json()['items'])==5
     assert all(s['id'] and s['created_at'] for s in c.get('/api/auth/sessions').json())
     print('Restored PR3 subject catalogue, time slots and session metadata verified.')
+
+    from scripts.verify_materials import PDF
+    restored=[]
+    for subject in subjects:
+        response=c.get('/api/schedule/subjects/'+subject['key']+'/materials')
+        assert response.status_code==200
+        restored.extend(response.json()['items'])
+    lecture=next(item for item in restored if item['title']=='Materials restore fixture')
+    downloaded=c.get('/api/schedule/materials/'+lecture['id']+'/file')
+    assert downloaded.status_code==200 and downloaded.content==PDF
+    print('Restored subject metadata and complete private lecture file verified.')

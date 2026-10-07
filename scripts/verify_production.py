@@ -17,6 +17,7 @@ from scripts.smoke import run as smoke
 from scripts.verify_notifications import run as notifications
 from scripts.verify_community import run as community
 from scripts.verify_pr3 import run as pr3
+from scripts.verify_materials import run as verify_materials, PDF
 
 PR2 = '3d3b650ac6ea2ac3b9953b829b43a658a4e97270'
 # A real earlier PR3 revision with the same schema and version metadata.
@@ -131,20 +132,27 @@ def main():
             values = fresh.config['services']['auth']['environment']
             smoke(api_urls(8080),values['SETUP_KEY']); notifications(api_urls(8080)); community(api_urls(8080)); pr3(api_urls(8080))
             from scripts.verify_study import run as study
-            study(api_urls(8080))
+            study(api_urls(8080)); verify_materials(api_urls(8080))
             assert_pool_and_postgres(fresh)
             p.budget(fresh)
             # The same browser feature checks now run within production memory/CPU limits.
             command('node','scripts/check_pr3_ui.cjs',env={**os.environ,'CAMPUS_BASE_URL':'http://localhost:8080'})
             command('node','scripts/check_study_ui.cjs',env={**os.environ,'CAMPUS_BASE_URL':'http://localhost:8080'})
+            command('node','scripts/check_materials_ui.cjs',env={**os.environ,'CAMPUS_BASE_URL':'http://localhost:8080'})
             saved = p.backup(fresh); p.test_restore(fresh,saved)
             # Prove that restore repopulates erased disposable schemas, not just a live DB.
             fresh.dc('stop',*p.APPS,what='Pause disposable restore fixture')
+            empty = fresh.dc('run','--rm','--no-deps','-T','schedule','python','-m','scripts.materials_archive','stage-stream','/var/lib/campus/materials',input=json.dumps({'has_archive':False,'materials':{}})+'\n',what='Stage empty disposable material fixture').strip()
+            fresh.publish_materials(empty)
+            assert fresh.material_state()['files'] == 0
             for service in p.SERVICES:
                 fresh.psql(service,f'DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION {service};')
                 fresh.restore_dump(service,Path(saved)/(service+'.dump'))
                 expected = json.loads((Path(saved)/'manifest.json').read_text())['snapshots'][service]
                 p.compare_snapshots(expected,fresh.snapshot(service))
+            material_manifest = p.verify_backup(saved, fresh.token())
+            restored_stage = fresh.stage_materials(Path(saved), material_manifest)
+            fresh.publish_materials(restored_stage)
             fresh.dc('up','-d','--wait','--wait-timeout','300',what='Start restored disposable fixture')
             command(sys.executable,'scripts/verify_restore.py')
             # Exercise the operator restore path too, including its pre-restore backup.
@@ -166,7 +174,22 @@ def main():
             p.deploy(fresh)
             command(sys.executable,'scripts/verify_restore.py')
             p.budget(fresh)
-            print('PASS: production profile, browser, erased-database recovery, operator restore, incompatible rollback rejection and forward update')
+            # Also migrate a source that already owns material files. The PR2
+            # fixture above proves the older, archive-free source path.
+            shared_fresh = {key:fresh.config['services']['auth']['environment'][key] for key in ('INTERNAL_TOKEN','SETUP_KEY')}
+            environment(folder/'material-migration.env',8082,shared_fresh,NOTIFICATION_WORKER='false')
+            material_target = p.Stack(folder/'material-migration.env',ROOT/'compose.production.yaml','campus-ci-material-migration',disposable=True)
+            ensure_empty_project(material_target); created.append(material_target)
+            with patch('builtins.input',return_value='MIGRATE'): p.migrate_databases(fresh,material_target)
+            p.deploy(material_target)
+            material_id = material_target.psql('schedule', "SELECT id FROM materials WHERE title='Materials restore fixture' ORDER BY created_at DESC LIMIT 1;")
+            assert material_id
+            with httpx.Client(base_url='http://localhost:8082',trust_env=False) as client:
+                assert client.post('/api/auth/login',json={'email':'admin@example.test','password':'Integration-test-password-2026'}).status_code == 200
+                restored = client.get('/api/schedule/materials/'+material_id+'/file')
+                assert restored.status_code == 200 and restored.content == PDF
+            p.budget(material_target)
+            print('PASS: production profile, browser, database+file recovery, operator restore, both material migration paths, incompatible rollback rejection and forward update')
         except Exception:
             # Only this job's synthetic fixtures exist here. Still redact every secret
             # before sharing the private command error in CI (never in the live CLI).
