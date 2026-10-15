@@ -42,7 +42,7 @@ def valid_image(image):
 
 def runner_secret():
     value = os.environ.get('BOT_RUNNER_TOKEN', '')
-    if len(value) < 40:
+    if not re.fullmatch(r'[0-9a-f]{64}', value):
         fail('bot_runner_not_configured', 503)
     return value
 
@@ -108,7 +108,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
             expiry = session.bot_access_until
             return {'owner': owner, 'mfa_enabled': enabled,
                     'unlocked': bool(owner and enabled and expiry and expiry > now()),
-                    'runner_ready': bool(len(os.getenv('BOT_RUNNER_TOKEN', '')) >= 40)}
+                    'runner_ready': bool(re.fullmatch(r'[0-9a-f]{64}', os.getenv('BOT_RUNNER_TOKEN', '')))}
 
     @app.post('/api/auth/bots/unlock')
     def unlock(data: UnlockInput, request: Request, response: Response):
