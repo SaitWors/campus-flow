@@ -64,9 +64,9 @@ export default function BotManager(){
    </form>:<>
     {!guard.runner_ready&&<Notice error>{ru?'Локальный исполнитель пока не настроен: управление ботами доступно, но контейнеры не запустятся до установки Bot Runner.':'Host runner is not configured. Bots cannot start until Bot Runner is installed.'}</Notice>}
     <div className="section-toolbar">
-     <p className="muted">{ru?'Только владелец · не более 5 ботов · 192 МиБ и 0,35 vCPU на бот':'Owner only · up to 5 bots · 192 MiB and 0.35 vCPU per bot'}</p>
+     <p className="muted">{ru?'Только владелец · не более 3 ботов · 192 МиБ и 0,35 vCPU на бот':'Owner only · up to 3 bots · 192 MiB and 0.35 vCPU per bot'}</p>
      <div className="button-row"><Button variant="secondary" onClick={()=>void act(async()=>{})}><RefreshCw size={16}/>{ru?'Обновить':'Refresh'}</Button>
-      <Button disabled={bots.length>=5} onClick={()=>{setCreating(true);setEditing(null);setForm(emptyForm);}}>{ru?'Добавить бота':'Add bot'}</Button></div>
+      <Button disabled={bots.length>=3} onClick={()=>{setCreating(true);setEditing(null);setForm(emptyForm);}}>{ru?'Добавить бота':'Add bot'}</Button></div>
     </div>
     {bots.length===0&&!creating&&<p className="muted">{ru?'Боты пока не добавлены.':'No bots registered.'}</p>}
     {bots.map(bot=><article key={bot.id} className="template-card">
