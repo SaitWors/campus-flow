@@ -33,7 +33,7 @@ def request(path, payload=None):
     req = urllib.request.Request(API + '/api/auth/bot-runner/' + path,
                                  headers=headers, data=content,
                                  method='POST' if content is not None else 'GET')
-    with urllib.request.urlopen(req, timeout=15) as response:
+    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=15) as response:
         return json.loads(response.read(65536))
 
 
@@ -77,7 +77,7 @@ def create(bot, name):
         with os.fdopen(fd, 'w') as out:
             out.write('BOT_TOKEN=' + bot['token'] + '\n')
             out.write('PYTHONDONTWRITEBYTECODE=1\nPYTHONUNBUFFERED=1\n')
-        docker('run', '-d', '--name', name,
+        docker('run', '-d', '--init', '--name', name,
                '--label', 'campus-flow.bot-managed=true',
                '--label', 'campus-flow.bot-id=' + bot['id'],
                '--label', 'campus-flow.bot-revision=' + str(bot['revision']),
