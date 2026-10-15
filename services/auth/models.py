@@ -27,6 +27,7 @@ class Session(Base):
     public_id: Mapped[str] = mapped_column(String(36), default=uid, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     device: Mapped[str] = mapped_column(String(200), default='')
+    bot_access_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 class TwoFactor(Base):
     __tablename__ = 'two_factor'
@@ -73,3 +74,19 @@ class Gate(Base):
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[int] = mapped_column(Integer, default=0)
     until: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class Bot(Base):
+    __tablename__ = 'managed_bots'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(60))
+    image: Mapped[str] = mapped_column(String(260))
+    token_cipher: Mapped[str] = mapped_column(String(512))
+    desired_state: Mapped[str] = mapped_column(String(12), default='stopped')
+    observed_state: Mapped[str] = mapped_column(String(12), default='stopped')
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    observed_revision: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(String(600), default='')
+    last_logs: Mapped[str] = mapped_column(String(4000), default='')
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
