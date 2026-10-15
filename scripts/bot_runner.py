@@ -14,6 +14,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 API = os.getenv('BOT_RUNNER_URL', 'http://127.0.0.1:8080').rstrip('/')
 SECRET = os.getenv('BOT_RUNNER_TOKEN', '')
@@ -125,7 +126,6 @@ def reconcile(bot):
                 docker('start', name)
             current = details(name)
             state = 'running' if current and current['running'] else 'error'
-        tail = docker('logs', '--tail', '20', name, check=False, timeout=10).stderr
         # docker logs separates stdout and stderr; retain both, redact the token.
         proc = docker('logs', '--tail', '20', name, check=False, timeout=10)
         logs = (proc.stdout + proc.stderr)[-4000:].replace(bot['token'], '[REDACTED]')
@@ -150,7 +150,8 @@ def purge_orphans(active):
 def main():
     if len(SECRET) < 40:
         raise SystemExit('BOT_RUNNER_TOKEN is missing or too short')
-    if not API.startswith('http://127.0.0.1:') and not API.startswith('http://localhost:'):
+    parsed = urlsplit(API)
+    if parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost') or parsed.username or parsed.password or parsed.path not in ('', '/') or parsed.query or parsed.fragment:
         raise SystemExit('BOT_RUNNER_URL must use local loopback only')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     while True:
