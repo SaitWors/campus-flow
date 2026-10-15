@@ -61,13 +61,14 @@ def test_owner_mfa_step_up_guards_all_bot_operations(tmp_path, monkeypatch):
                         lambda *a, **kw: None)
 
     with TestClient(app) as client:
-        client.cookies.set('cf_session', unrelated_session)
+        client.cookies.set('cf_session', unrelated_session, domain='testserver.local', path='/')
         assert client.get('/api/auth/bots/guard').json()['owner'] is False
         assert client.get('/api/auth/bots').status_code == 403
         assert client.post('/api/auth/bots/unlock', json={'code':'000000'},
                            headers={'X-CSRF-Token':'other-csrf'}).status_code == 403
 
-        client.cookies.set('cf_session', password_session)
+        client.cookies.clear()
+        client.cookies.set('cf_session', password_session, domain='testserver.local', path='/')
         assert client.get('/api/auth/bots').status_code == 403
         assert client.post('/api/auth/bots',json={'name':'bot','image':IMAGE,'token':BOT_TOKEN},
                            headers={'X-CSRF-Token':'old-csrf'}).status_code == 403
