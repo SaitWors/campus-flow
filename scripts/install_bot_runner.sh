@@ -54,5 +54,6 @@ else
   [[ -f /etc/campus-flow-bot-runner.env ]] || { echo "Run prepare first" >&2; exit 1; }
   systemctl enable --now campus-flow-bot-runner.service
   systemctl restart campus-flow-bot-runner.service
-  systemctl --no-pager --full status campus-flow-bot-runner.service | head -n 16
+  systemctl is-active --quiet campus-flow-bot-runner.service
+  systemctl --no-pager --full status campus-flow-bot-runner.service --lines=0
 fi
