@@ -139,7 +139,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
     def add_bot(data: BotInput, request: Request):
         with DB.begin() as db:
             u, _ = owner_session(db, request)
-            if db.query(Bot).count() >= 5:
+            if db.query(Bot).count() >= 3:
                 fail('bot_limit_reached', 409)
             if not TOKEN_PATTERN.fullmatch(data.token):
                 fail('invalid_bot_token', 422)
