@@ -64,10 +64,15 @@ def owned(name, item):
             and item['labels'].get('campus-flow.bot-id') == name.removeprefix('cfbot-'))
 
 
-def create(bot, name):
+def pull_image(bot):
     if shutil.disk_usage('/').free < 3 * 1024 ** 3:
         raise RuntimeError('less than 3 GiB free disk: refusing image pull')
     docker('pull', bot['image'], timeout=240)
+
+
+def create(bot, name, *, pre_pulled=False):
+    if not pre_pulled:
+        pull_image(bot)
     # The temporary env file prevents exposing the secret in the command line.
     # Docker still stores container environment variables: only host root /
     # privileged Docker administrators should access Docker inspect.
@@ -117,11 +122,15 @@ def reconcile(bot):
                 docker('stop', '--time', '10', name, timeout=25)
             state = 'stopped'
         else:
+            pre_pulled = False
             if info and info['labels'].get('campus-flow.bot-revision') != str(bot['revision']):
+                # Keep the old bot running if GHCR is unreachable or pull fails.
+                pull_image(bot)
+                pre_pulled = True
                 docker('rm', '-f', name, timeout=30)
                 info = None
             if not info:
-                create(bot, name)
+                create(bot, name, pre_pulled=pre_pulled)
             elif not info['running']:
                 docker('start', name)
             current = details(name)
