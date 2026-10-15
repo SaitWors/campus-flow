@@ -80,6 +80,7 @@ class Bot(Base):
     __tablename__ = 'managed_bots'
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(60))
+    platform: Mapped[str] = mapped_column(String(12), default='telegram', server_default='telegram')
     image: Mapped[str] = mapped_column(String(260))
     token_cipher: Mapped[str] = mapped_column(String(512))
     desired_state: Mapped[str] = mapped_column(String(12), default='stopped')

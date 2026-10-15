@@ -1,4 +1,4 @@
-"""Owner-only, step-up protected control plane for prebuilt Telegram bot images.
+"""Owner-only, step-up protected control plane for Telegram and Discord bot images.
 
 No Docker socket, shell execution or GitHub fetching in this API process.
 The optional host runner is a separate, explicitly installed component.
@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import Request, Response
 from pydantic import Field
@@ -19,6 +20,7 @@ from services.auth.security import cipher, consume_code
 
 IMAGE_PATTERN = re.compile(r"ghcr\.io/saitwors/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}\Z")
 TOKEN_PATTERN = re.compile(r"[0-9]{5,15}:[a-zA-Z0-9_-]{30,}\Z")
+DISCORD_TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9_.-]{30,200}\Z")
 BOT_ID_PATTERN = re.compile(r"[0-9a-f-]{36}\Z")
 
 
@@ -26,6 +28,19 @@ def migrate_bots(conn):
     Bot.__table__.create(conn, checkfirst=True)
     if 'bot_access_until' not in {c['name'] for c in inspect(conn).get_columns('sessions')}:
         conn.execute(text('ALTER TABLE sessions ADD COLUMN bot_access_until TIMESTAMP'))
+
+
+def migrate_bot_platforms(conn):
+    if 'platform' not in {c['name'] for c in inspect(conn).get_columns('managed_bots')}:
+        conn.execute(text("ALTER TABLE managed_bots ADD COLUMN platform VARCHAR(12) NOT NULL DEFAULT 'telegram'"))
+
+
+def valid_token(platform, token):
+    # Discord tokens are opaque; do not depend on undocumented segment lengths.
+    pattern = TOKEN_PATTERN if platform == 'telegram' else DISCORD_TOKEN_PATTERN
+    if not pattern.fullmatch(token):
+        fail('invalid_bot_token', 422)
+    return token
 
 
 def is_owner(db, user):
@@ -48,7 +63,7 @@ def runner_secret():
 
 
 def as_json(bot):
-    return {'id': bot.id, 'name': bot.name, 'image': bot.image,
+    return {'id': bot.id, 'name': bot.name, 'image': bot.image, 'platform': bot.platform,
             'desired_state': bot.desired_state, 'observed_state': bot.observed_state,
             'revision': bot.revision, 'observed_revision': bot.observed_revision,
             'last_error': bot.last_error, 'last_logs': bot.last_logs,
@@ -62,7 +77,8 @@ class UnlockInput(Input):
 class BotInput(Input):
     name: str = Field(min_length=2, max_length=60)
     image: str = Field(min_length=85, max_length=260)
-    token: str = Field(default='', max_length=160)
+    platform: Literal['telegram', 'discord'] = 'telegram'
+    token: str = Field(default='', max_length=200)
 
 
 class BotState(Input):
@@ -106,8 +122,12 @@ def install_bot_manager(app, DB, check_session, rate, audit):
             factor = db.get(TwoFactor, u.id) if owner else None
             enabled = bool(factor and factor.enabled)
             expiry = session.bot_access_until
+            unlocked = bool(owner and enabled and expiry and expiry > now())
             return {'owner': owner, 'mfa_enabled': enabled,
-                    'unlocked': bool(owner and enabled and expiry and expiry > now()),
+                    'unlocked': unlocked,
+                    'access_expires_at': expiry.isoformat() + 'Z' if unlocked else None,
+                    'server_time': now().isoformat() + 'Z',
+                    'limits': {'max_bots': 3, 'memory_mb': 192, 'cpus': 0.35},
                     'runner_ready': bool(re.fullmatch(r'[0-9a-f]{64}', os.getenv('BOT_RUNNER_TOKEN', '')))}
 
     @app.post('/api/auth/bots/unlock')
@@ -129,6 +149,14 @@ def install_bot_manager(app, DB, check_session, rate, audit):
             audit(db, u.name, 'bot_manager_unlocked', u.id)
             return {'ok': True, 'csrf': session.csrf, 'expires_in': 600}
 
+    @app.post('/api/auth/bots/lock')
+    def lock(request: Request):
+        with DB.begin() as db:
+            u, session = owner_session(db, request, unlocked=False)
+            session.bot_access_until = None
+            audit(db, u.name, 'bot_manager_locked', u.id)
+            return {'ok': True}
+
     @app.get('/api/auth/bots')
     def list_bots(request: Request):
         with DB() as db:
@@ -142,37 +170,50 @@ def install_bot_manager(app, DB, check_session, rate, audit):
             db.execute(select(Gate).where(Gate.id == 'admin-guard').with_for_update()).scalar_one()
             if db.query(Bot).count() >= 3:
                 fail('bot_limit_reached', 409)
-            if not TOKEN_PATTERN.fullmatch(data.token):
-                fail('invalid_bot_token', 422)
-            bot = Bot(name=data.name.strip(), image=valid_image(data.image),
-                      token_cipher=cipher().encrypt(data.token.encode()).decode())
+            bot = Bot(name=data.name, image=valid_image(data.image), platform=data.platform,
+                      token_cipher=cipher().encrypt(valid_token(data.platform, data.token).encode()).decode())
             db.add(bot)
             db.flush()
-            audit(db, u.name, 'bot_created', bot.id, {'name': bot.name})
+            audit(db, u.name, 'bot_created', bot.id, {'name': bot.name, 'platform': bot.platform})
             return as_json(bot)
 
     @app.put('/api/auth/bots/{bot_id}')
     def update_bot(bot_id: str, data: BotInput, request: Request):
         with DB.begin() as db:
             u, _ = owner_session(db, request)
-            bot = db.get(Bot, bot_id)
+            bot = db.scalar(select(Bot).where(Bot.id == bot_id).with_for_update())
             if not bot:
                 fail('not_found', 404)
-            bot.name = data.name.strip()
+            if bot.platform != data.platform and not data.token:
+                fail('bot_platform_token_required', 422)
+            bot.name = data.name
             bot.image = valid_image(data.image)
+            bot.platform = data.platform
             if data.token:
-                if not TOKEN_PATTERN.fullmatch(data.token):
-                    fail('invalid_bot_token', 422)
-                bot.token_cipher = cipher().encrypt(data.token.encode()).decode()
+                bot.token_cipher = cipher().encrypt(valid_token(data.platform, data.token).encode()).decode()
+                bot.last_error = ''
+                bot.last_logs = ''
             bot.revision += 1
-            audit(db, u.name, 'bot_updated', bot.id, {'revision': bot.revision})
+            audit(db, u.name, 'bot_updated', bot.id, {'revision': bot.revision, 'platform': bot.platform})
+            return as_json(bot)
+
+    @app.post('/api/auth/bots/{bot_id}/restart')
+    def restart_bot(bot_id: str, request: Request):
+        with DB.begin() as db:
+            u, _ = owner_session(db, request)
+            bot = db.scalar(select(Bot).where(Bot.id == bot_id).with_for_update())
+            if not bot:
+                fail('not_found', 404)
+            bot.desired_state = 'running'
+            bot.revision += 1
+            audit(db, u.name, 'bot_restarted', bot.id, {'revision': bot.revision})
             return as_json(bot)
 
     @app.post('/api/auth/bots/{bot_id}/state')
     def set_bot_state(bot_id: str, data: BotState, request: Request):
         with DB.begin() as db:
             u, _ = owner_session(db, request)
-            bot = db.get(Bot, bot_id)
+            bot = db.scalar(select(Bot).where(Bot.id == bot_id).with_for_update())
             if not bot:
                 fail('not_found', 404)
             if bot.desired_state != data.desired_state:
@@ -185,7 +226,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
     def delete_bot(bot_id: str, request: Request):
         with DB.begin() as db:
             u, _ = owner_session(db, request)
-            bot = db.get(Bot, bot_id)
+            bot = db.scalar(select(Bot).where(Bot.id == bot_id).with_for_update())
             if not bot:
                 fail('not_found', 404)
             db.delete(bot)
@@ -196,7 +237,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
     def runner_state(request: Request):
         runner_check(request)
         with DB() as db:
-            return [{'id': b.id, 'image': b.image,
+            return [{'id': b.id, 'image': b.image, 'platform': b.platform,
                      'desired_state': b.desired_state, 'revision': b.revision,
                      'token': cipher().decrypt(b.token_cipher.encode()).decode()}
                     for b in db.scalars(select(Bot))]
@@ -205,12 +246,17 @@ def install_bot_manager(app, DB, check_session, rate, audit):
     def runner_report(data: RunnerReport, request: Request):
         runner_check(request)
         with DB.begin() as db:
-            bot = db.get(Bot, data.id)
-            if not bot:
+            # Serialize against credential rotation and concurrent owner commands.
+            # PostgreSQL must not accept an old report between the version check
+            # and commit; SQLite development mode uses BEGIN IMMEDIATE instead.
+            bot = db.scalar(select(Bot).where(Bot.id == data.id).with_for_update())
+            if not bot or data.observed_revision != bot.revision:
                 return {'ok': False}
             # Never reveal tokens through diagnostics even if a bot prints its environment.
             token = cipher().decrypt(bot.token_cipher.encode()).decode()
-            log = data.last_logs.replace(token, '[REDACTED]')
+            # A status-only report (e.g. stopped, no matching container) keeps the
+            # last already-redacted output. Credential rotation clears it first.
+            log = data.last_logs.replace(token, '[REDACTED]') if 'last_logs' in data.model_fields_set else bot.last_logs
             err = data.last_error.replace(token, '[REDACTED]')
             if (bot.observed_state != data.observed_state or
                     bot.observed_revision != data.observed_revision or

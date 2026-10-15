@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from services.common.core import database, migrate, setup_app, Input, now, digest, fail, internal, manager, service_secret
 from services.auth.models import Base, User, Session, Invitation, Reset, Audit, Gate, TwoFactor, LoginChallenge
 from services.auth.security import migrate_security, make_challenge, consume_code, install
-from services.auth.bots import migrate_bots, install_bot_manager
+from services.auth.bots import migrate_bots, migrate_bot_platforms, install_bot_manager
 from services.auth.passwords import BoundedPasswordHasher
 
 engine, DB = database('auth')
@@ -28,7 +28,7 @@ def add_group_role(conn):
 @asynccontextmanager
 async def lifespan(app):
     service_secret()
-    migrate(engine, Base, (add_group_role,migrate_security,migrate_bots))
+    migrate(engine, Base, (add_group_role,migrate_security,migrate_bots,migrate_bot_platforms))
     with DB.begin() as db:
         if not db.get(Gate, 'admin-guard'):
             db.add(Gate(id='admin-guard'))
