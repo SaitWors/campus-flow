@@ -47,7 +47,7 @@ docker compose up --build -d --wait
 
 ## Документация
 
-**Новая функция:** [Private Bot Manager (русская инструкция)](docs/BOT_MANAGER_RU.md) — TOTP и запуск Telegram-ботов только для первоначального владельца.
+**Панель ботов:** [Private Bot Manager (русская инструкция)](docs/BOT_MANAGER_RU.md) — Telegram и Discord, карточки состояний, логи и запуск только для первоначального владельца с TOTP.
 
 
 | Файл | Содержание |

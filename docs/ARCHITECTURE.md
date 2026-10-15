@@ -4,7 +4,7 @@ Campus Flow has three independently owned APIs. Services authenticate internal r
 
 | Owner | Data | Invariants |
 | --- | --- | --- |
-| auth, schema 4 | Members, invitations, roles, sessions, TOTP/recovery, audit | Active account, password/MFA checks, CSRF, single-use recovery, session revocation |
+| auth, schema 5 | Members, invitations, roles, sessions, TOTP/recovery, audit, Telegram/Discord bot registry | Active account, password/MFA checks, CSRF, single-use recovery, session revocation |
 | schedule, schema 5 | Semester, templates, occurrences, subject details, time presets, assignments, personal progress, private material metadata/files, events, translations | Timezone-aware instants, conflicts, revisions, manager edits, subgroup access, private progress, authorized file access and storage quota |
 | notifications, schema 3 | Inbox, preferences, announcements, questions, push subscriptions/VAPID, Telegram links/bindings/delivery, cursors | Recipient ownership, live audience checks, quiet hours, privacy, durable retries |
 
@@ -20,7 +20,7 @@ The notification worker groups committed timetable changes, persists inbox and d
 
 ## Private owner Bot Manager
 
-The auth service owns an encrypted registry of digest-pinned bot images (schema 4) and 10-minute step-up authorization tied to the original setup-owner account and session. It requires enabled TOTP and rotates the auth cookie/CSRF at privilege elevation. The web/API containers never mount the Docker socket. An optional host-side systemd runner with separate 256-bit credentials reconciles only containers with dedicated ownership labels; bots are not attached to Campus Flow's private networks.
+The auth service owns an encrypted registry of digest-pinned Telegram and Discord bot images (schema 5) and 10-minute step-up authorization tied to the original setup-owner account and session. It requires enabled TOTP and rotates the auth cookie/CSRF at privilege elevation. Platform migration defaults existing bots to Telegram and preserves their encrypted tokens. Owner commands and runner reports lock the same bot row; reports from old revisions are rejected. The web/API containers never mount the Docker socket. An optional host-side systemd runner with separate 256-bit credentials reconciles only containers with dedicated ownership labels; bots are not attached to Campus Flow's private networks. BOT_TOKEN remains compatible, alongside TELEGRAM_BOT_TOKEN or DISCORD_TOKEN. Stopped containers from an old revision are removed without publishing their logs. The UI expires private data locally, permits manual session lock, polls only while visible, and distinguishes desired state, confirmed container state, and stale reports; it does not claim platform connectivity or actual RAM usage.
 
 ## Runtime and frontend
 

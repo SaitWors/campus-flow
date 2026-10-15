@@ -81,6 +81,8 @@ def create(bot, name, *, pre_pulled=False):
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, 'w') as out:
             out.write('BOT_TOKEN=' + bot['token'] + '\n')
+            variable = 'DISCORD_TOKEN' if bot.get('platform', 'telegram') == 'discord' else 'TELEGRAM_BOT_TOKEN'
+            out.write(variable + '=' + bot['token'] + '\n')
             out.write('PYTHONDONTWRITEBYTECODE=1\nPYTHONUNBUFFERED=1\n')
         docker('run', '-d', '--init', '--name', name,
                '--label', 'campus-flow.bot-managed=true',
@@ -103,6 +105,8 @@ def create(bot, name, *, pre_pulled=False):
 def reconcile(bot):
     if not isinstance(bot, dict) or not BOT_ID.fullmatch(str(bot.get('id', ''))):
         raise ValueError('invalid bot identifier')
+    if bot.get('platform', 'telegram') not in ('telegram', 'discord'):
+        raise ValueError('invalid bot platform')
     if not IMAGE.fullmatch(str(bot.get('image', ''))):
         raise ValueError('non-allowlisted image')
     if bot.get('desired_state') not in ('running', 'stopped'):
@@ -120,6 +124,11 @@ def reconcile(bot):
         if bot['desired_state'] == 'stopped':
             if info and info['running']:
                 docker('stop', '--time', '10', name, timeout=25)
+            if info and info['labels'].get('campus-flow.bot-revision') != str(bot['revision']):
+                # A stopped container can still retain an old token and old logs.
+                # Never report its output as if it belonged to the new credentials.
+                docker('rm', '-f', name, timeout=30)
+                info = None
             state = 'stopped'
         else:
             pre_pulled = False
@@ -134,12 +143,14 @@ def reconcile(bot):
             elif not info['running']:
                 docker('start', name)
             current = details(name)
+            info = current
             state = 'running' if current and current['running'] else 'error'
         # docker logs separates stdout and stderr; retain both, redact the token.
-        proc = docker('logs', '--tail', '20', name, check=False, timeout=10)
-        logs = (proc.stdout + proc.stderr)[-4000:].replace(bot['token'], '[REDACTED]')
-        request('report', {'id': bot['id'], 'observed_revision': bot['revision'],
-                           'observed_state': state, 'last_logs': logs})
+        report = {'id': bot['id'], 'observed_revision': bot['revision'], 'observed_state': state}
+        if info and info['labels'].get('campus-flow.bot-revision') == str(bot['revision']):
+            proc = docker('logs', '--tail', '20', name, check=False, timeout=10)
+            report['last_logs'] = (proc.stdout + proc.stderr)[-4000:].replace(bot['token'], '[REDACTED]')
+        request('report', report)
     except Exception as exc:
         request('report', {'id': bot['id'], 'observed_revision': bot['revision'],
                            'observed_state': 'error', 'last_error': str(exc)[:200]})

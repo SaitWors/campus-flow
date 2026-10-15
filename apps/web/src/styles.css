@@ -40,4 +40,8 @@
 @media(max-width:480px){.theme-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .translation-note{display:block;font-size:.8rem;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.admin-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.admin-tabs button{white-space:normal;line-height:1.4;min-width:0;padding:10px 12px;font-size:.8rem}
+.admin-tabs button svg{flex-shrink:0}
+@media(max-width:780px){.admin-tabs{display:flex}.admin-tabs button{white-space:nowrap;flex:none}}
 .schedule-board>.translation-note{padding:10px 20px}

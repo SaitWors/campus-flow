@@ -34,7 +34,7 @@ def test_wrong_totp_key_and_newer_schema_are_rejected(tmp_path):
     with pytest.raises(RuntimeError, match='original INTERNAL_TOKEN'):
         p.verify_backup(folder, 'different-key')
     manifest = json.loads((folder/'manifest.json').read_text())
-    manifest['schema_versions']['auth'] = 5
+    manifest['schema_versions']['auth'] = p.SCHEMAS['auth'] + 1
     p.private_json(folder/'manifest.json', manifest)
     with pytest.raises(RuntimeError, match='incompatible'):
         p.verify_backup(folder, 'test-internal-key')
@@ -161,7 +161,7 @@ def test_pre_materials_backup_remains_supported_but_newer_image_schema_is_five(t
     manifest = json.loads((folder/'manifest.json').read_text())
     manifest['schema_versions']['schedule'] = 4
     p.private_json(folder/'manifest.json', manifest)
-    assert p.SCHEMAS == {'auth':4,'schedule':5,'notifications':3}
+    assert p.SCHEMAS == {'auth':5,'schedule':5,'notifications':3}
     assert p.verify_backup(folder, 'test-internal-key')['schema_versions']['schedule'] == 4
 
 

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[1]
 SERVICES = ('auth', 'schedule', 'notifications')
 APPS = ('web', 'notifications', 'schedule', 'auth')
-SCHEMAS = {'auth': 4, 'schedule': 5, 'notifications': 3}
+SCHEMAS = {'auth': 5, 'schedule': 5, 'notifications': 3}
 
 sys.path.insert(0, str(ROOT))
 from scripts import materials_archive as materials

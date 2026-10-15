@@ -101,6 +101,7 @@ jobs:
           node scripts/check_notifications_ui.cjs || browser_status=1
           node scripts/check_study_ui.cjs || browser_status=1
           node scripts/check_materials_ui.cjs || browser_status=1
+          node scripts/check_bot_manager_ui.cjs || browser_status=1
           exit "$browser_status"
       - uses: actions/upload-artifact@v4
         if: always()
