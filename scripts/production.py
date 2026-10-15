@@ -136,6 +136,9 @@ def validate_config(config, *, disposable=False):
     local_test = disposable and re.fullmatch(r'http://(localhost|127\.0\.0\.1):\d+', origin)
     if not local_test and (not origin.startswith('https://') or str(environment['COOKIE_SECURE']).lower() != 'true'):
         raise RuntimeError('Production requires HTTPS and Secure cookies')
+    runner_token = environment.get('BOT_RUNNER_TOKEN', '')
+    if runner_token and not re.fullmatch(r'[0-9a-f]{64}', runner_token):
+        raise RuntimeError('BOT_RUNNER_TOKEN must be 64 lowercase hex characters')
     if len(environment.get('INTERNAL_TOKEN', '')) < 32 or len(environment.get('SETUP_KEY', '')) < 24:
         raise RuntimeError('Use strong INTERNAL_TOKEN and SETUP_KEY values')
     passwords = [v for k, v in services['postgres']['environment'].items() if k.endswith('PASSWORD')]
