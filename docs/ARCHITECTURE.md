@@ -4,7 +4,7 @@ Campus Flow has three independently owned APIs. Services authenticate internal r
 
 | Owner | Data | Invariants |
 | --- | --- | --- |
-| auth, schema 3 | Members, invitations, roles, sessions, TOTP/recovery, audit | Active account, password/MFA checks, CSRF, single-use recovery, session revocation |
+| auth, schema 4 | Members, invitations, roles, sessions, TOTP/recovery, audit | Active account, password/MFA checks, CSRF, single-use recovery, session revocation |
 | schedule, schema 5 | Semester, templates, occurrences, subject details, time presets, assignments, personal progress, private material metadata/files, events, translations | Timezone-aware instants, conflicts, revisions, manager edits, subgroup access, private progress, authorized file access and storage quota |
 | notifications, schema 3 | Inbox, preferences, announcements, questions, push subscriptions/VAPID, Telegram links/bindings/delivery, cursors | Recipient ownership, live audience checks, quiet hours, privacy, durable retries |
 
@@ -17,6 +17,10 @@ Mutations require the current revision and return 409 on concurrent changes. Per
 Subject material uploads stream to a private schedule volume. Managers publish files under a database quota lock; members download after a fresh account check. A publication worker owns final cleanup, so a disconnected request cannot remove a committed file. Startup removes abandoned uploads while preserving files locked by another active process.
 
 The notification worker groups committed timetable changes, persists inbox and delivery jobs with cursor advancement, and rechecks account/audience/delivery state before sending. Web Push is tied to a verified browser session. Telegram uses an explicit one-time private-chat binding and checks active membership independently of browser session lifetime. Delivery leases and bounded retries survive restarts; an external transport timeout can still produce a duplicate after uncertain delivery.
+
+## Private owner Bot Manager
+
+The auth service owns an encrypted registry of digest-pinned bot images (schema 4) and 10-minute step-up authorization tied to the original setup-owner account and session. It requires enabled TOTP and rotates the auth cookie/CSRF at privilege elevation. The web/API containers never mount the Docker socket. An optional host-side systemd runner with separate 256-bit credentials reconciles only containers with dedicated ownership labels; bots are not attached to Campus Flow's private networks.
 
 ## Runtime and frontend
 
