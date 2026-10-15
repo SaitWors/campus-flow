@@ -6,7 +6,6 @@ on:
   workflow_run:
     workflows: ["Campus Flow verification"]
     types: [completed]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,12 +13,10 @@ permissions:
 jobs:
   publish:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -30,12 +27,12 @@ jobs:
       matrix:
         component: [api, web]
     env:
-      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - name: Checkout exact verified source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
       - name: Verify checked-out commit
@@ -68,17 +65,17 @@ jobs:
           file: ./infra/${{ matrix.component }}.Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/saitwors/campus-flow-${{ matrix.component }}:${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+          tags: ghcr.io/saitwors/campus-flow-${{ matrix.component }}:${{ github.event.workflow_run.head_sha }}
           build-args: |
-            VCS_REF=${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+            VCS_REF=${{ github.event.workflow_run.head_sha }}
             BUILD_DATE=${{ steps.stamp.outputs.build_date }}
           labels: |
             org.opencontainers.image.source=https://github.com/SaitWors/campus-flow
-            org.opencontainers.image.revision=${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha,scope=campus-flow-${{ matrix.component }}
           cache-to: type=gha,scope=campus-flow-${{ matrix.component }},mode=max
 
       - name: Check published image manifest
         shell: bash
         run: |
-          docker buildx imagetools inspect "ghcr.io/saitwors/campus-flow-${{ matrix.component }}:${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
+          docker buildx imagetools inspect "ghcr.io/saitwors/campus-flow-${{ matrix.component }}:${{ github.event.workflow_run.head_sha }}"
