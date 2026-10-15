@@ -14,7 +14,7 @@ from pydantic import Field
 from sqlalchemy import inspect, select, text
 
 from services.common.core import Input, digest, fail, now
-from services.auth.models import Audit, Bot, Session, TwoFactor
+from services.auth.models import Audit, Bot, Gate, Session, TwoFactor
 from services.auth.security import cipher, consume_code
 
 IMAGE_PATTERN = re.compile(r"ghcr\.io/saitwors/[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}\Z")
@@ -139,6 +139,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
     def add_bot(data: BotInput, request: Request):
         with DB.begin() as db:
             u, _ = owner_session(db, request)
+            db.execute(select(Gate).where(Gate.id == 'admin-guard').with_for_update()).scalar_one()
             if db.query(Bot).count() >= 3:
                 fail('bot_limit_reached', 409)
             if not TOKEN_PATTERN.fullmatch(data.token):
