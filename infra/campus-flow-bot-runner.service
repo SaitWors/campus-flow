@@ -1,0 +1,28 @@
+[Unit]
+Description=Campus Flow owner bot runner (digest-pinned Docker images)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/campus-flow
+EnvironmentFile=/etc/campus-flow-bot-runner.env
+ExecStart=/usr/bin/python3 /opt/campus-flow/scripts/bot_runner.py
+Restart=on-failure
+RestartSec=10s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
