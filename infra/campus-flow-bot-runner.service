@@ -9,6 +9,8 @@ User=root
 Group=root
 WorkingDirectory=/opt/campus-flow
 EnvironmentFile=/etc/campus-flow-bot-runner.env
+Environment=DOCKER_CONFIG=/run/campus-flow-bot-runner/dockerconfig
+RuntimeDirectory=campus-flow-bot-runner
 ExecStart=/usr/bin/python3 /opt/campus-flow/scripts/bot_runner.py
 Restart=on-failure
 RestartSec=10s
