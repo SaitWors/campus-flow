@@ -1,0 +1,37 @@
+name: mandarin-habit-bot
+
+services:
+  bot:
+    build: .
+    image: mandarin-habit-bot:local
+    restart: unless-stopped
+    init: true
+    user: '10001:10001'
+    read_only: true
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?Fill BOT_TOKEN in .env with a NEW BotFather token}
+      OWNER_ID: ${OWNER_ID:-0}
+      BOT_DATA_DIR: /data
+    volumes:
+      - bot_data:/data
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.35
+    pids_limit: 64
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: '5m'
+        max-file: '2'
+    networks: [bot_net]
+
+volumes:
+  bot_data:
+
+networks:
+  bot_net:
