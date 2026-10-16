@@ -179,6 +179,7 @@ def test_runner_injects_platform_token_without_exposing_command_line(monkeypatch
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(runner, 'docker', docker)
+    monkeypatch.setattr(runner, 'storage_mount', lambda bot: [])
     mkstemp = runner.tempfile.mkstemp
     monkeypatch.setattr(runner.tempfile, 'mkstemp', lambda **kw: mkstemp(prefix=kw['prefix'], dir=tmp_path))
     runner.create(bot, 'cfbot-' + bot['id'], pre_pulled=True)

@@ -47,6 +47,8 @@ docker compose up --build -d --wait
 
 ## Документация
 
+**Личная напоминалка Java/спорт:** [подключение через панель](docs/HABIT_BOT_RU.md).
+
 **Панель ботов:** [Private Bot Manager (русская инструкция)](docs/BOT_MANAGER_RU.md) — Telegram и Discord, карточки состояний, логи и запуск только для первоначального владельца с TOTP.
 
 

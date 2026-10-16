@@ -70,9 +70,52 @@ def pull_image(bot):
     docker('pull', bot['image'], timeout=240)
 
 
+def storage_mount(bot):
+    """Images opt into one fixed data path; names/driver are controlled here."""
+    result = docker('image', 'inspect', bot['image'])
+    try:
+        labels = json.loads(result.stdout)[0]['Config'].get('Labels') or {}
+        contract = labels.get('com.campus-flow.bot.storage')
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        raise RuntimeError('unable to inspect bot storage contract') from None
+    if contract is None:
+        return []
+    if contract != 'data-v1':
+        raise RuntimeError('unsupported bot storage contract')
+    volume = 'cfbot-data-' + bot['id']
+
+    def inspect_volume():
+        result = docker('volume', 'inspect', volume, check=False)
+        if result.returncode:
+            return None
+        try:
+            item = json.loads(result.stdout)[0]
+            labels = item.get('Labels') or {}
+            if (item.get('Driver') != 'local' or item.get('Options') or
+                    labels.get('campus-flow.bot-managed') != 'true' or
+                    labels.get('campus-flow.bot-id') != bot['id']):
+                raise RuntimeError('bot data volume collision or unsafe volume options')
+            return item
+        except (ValueError, IndexError, TypeError, AttributeError):
+            raise RuntimeError('unable to inspect bot data volume') from None
+
+    if inspect_volume() is None:
+        docker('volume', 'create', '--driver', 'local',
+               '--label', 'campus-flow.bot-managed=true',
+               '--label', 'campus-flow.bot-id=' + bot['id'], volume)
+        if inspect_volume() is None:
+            raise RuntimeError('bot data volume was not created')
+    return ['--mount', 'type=volume,source=' + volume + ',target=/data']
+
+
 def create(bot, name, *, pre_pulled=False):
+    if not BOT_ID.fullmatch(str(bot.get('id',''))) or name != 'cfbot-' + bot['id']:
+        raise ValueError('invalid bot identifier')
+    if not IMAGE.fullmatch(str(bot.get('image',''))):
+        raise ValueError('non-allowlisted image')
     if not pre_pulled:
         pull_image(bot)
+    storage = storage_mount(bot)
     # The temporary env file prevents exposing the secret in the command line.
     # Docker still stores container environment variables: only host root /
     # privileged Docker administrators should access Docker inspect.
@@ -84,6 +127,8 @@ def create(bot, name, *, pre_pulled=False):
             variable = 'DISCORD_TOKEN' if bot.get('platform', 'telegram') == 'discord' else 'TELEGRAM_BOT_TOKEN'
             out.write(variable + '=' + bot['token'] + '\n')
             out.write('PYTHONDONTWRITEBYTECODE=1\nPYTHONUNBUFFERED=1\n')
+            if storage:
+                out.write('BOT_DATA_DIR=/data\n')
         docker('run', '-d', '--init', '--name', name,
                '--label', 'campus-flow.bot-managed=true',
                '--label', 'campus-flow.bot-id=' + bot['id'],
@@ -97,7 +142,7 @@ def create(bot, name, *, pre_pulled=False):
                '--network', 'bridge',
                '--log-driver', 'json-file', '--log-opt', 'max-size=5m',
                '--log-opt', 'max-file=2',
-               '--env-file', env_file, bot['image'], timeout=90)
+               *storage, '--env-file', env_file, bot['image'], timeout=90)
     finally:
         os.unlink(env_file)
 
