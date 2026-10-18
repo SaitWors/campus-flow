@@ -33,7 +33,7 @@ const fs=require('node:fs/promises');
   await page.screenshot({path:'test-results/ultra-black-mobile.png',fullPage:true});
   await page.setViewportSize({width:1360,height:900});
   await page.goto('/#schedule');
-  await page.getByRole('button',{name:'Add class',exact:true}).click();
+  await page.locator('.page-heading').getByRole('button',{name:'Add class',exact:true}).click();
   await page.getByLabel('Subject',{exact:true}).fill('Технологии баз данных');
   const english=page.getByLabel(/English subject name/);
   await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(i=>/data/i.test(i.placeholder)),null,{timeout:20000});
