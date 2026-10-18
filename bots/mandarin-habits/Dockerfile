@@ -1,5 +1,5 @@
 FROM python:3.12-slim
-LABEL com.campus-flow.bot.storage="data-v1"
+LABEL com.campus-flow.bot.storage="data-v1" com.campus-flow.bot.miniapp="habits-v1"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 COPY requirements.txt .

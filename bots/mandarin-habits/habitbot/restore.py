@@ -21,7 +21,7 @@ def restore(source_path, config):
         try:
             if source.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise ValueError('Копия повреждена.')
-            if source.execute('PRAGMA user_version').fetchone()[0] not in (1, 2):
+            if source.execute('PRAGMA user_version').fetchone()[0] not in (1, 2, 3):
                 raise ValueError('Несовместимая версия копии.')
             owner = source.execute("SELECT value FROM settings WHERE key='owner_id'").fetchone()
             expected_owner = config.owner_id

@@ -15,5 +15,7 @@ LABEL org.opencontainers.image.source="https://github.com/SaitWors/campus-flow" 
       org.opencontainers.image.revision=$VCS_REF \
       org.opencontainers.image.created=$BUILD_DATE
 COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
+COPY infra/habits-headers.conf /etc/nginx/habits-headers.conf
+COPY bots/mandarin-habits/web /usr/share/nginx/html/habits-app
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080

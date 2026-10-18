@@ -1,16 +1,19 @@
-from telegram import InlineKeyboardButton as Button, InlineKeyboardMarkup as Markup
+from telegram import InlineKeyboardButton as Button, InlineKeyboardMarkup as Markup, WebAppInfo
 
 
-def menu():
-    return Markup([[Button('Цели сегодня', callback_data='menu:today'),
+def menu(app_url=''):
+    rows = [[Button('Сегодня', callback_data='menu:today'),
                     Button('Прогресс', callback_data='menu:profile')],
                    [Button('Магазин наград', callback_data='menu:shop'),
                     Button('Настройки', callback_data='menu:settings')],
-                   [Button('Мой курс Java',callback_data='menu:course')]])
+                   [Button('Курс Java',callback_data='menu:course')]]
+    if app_url:
+        rows.insert(0, [Button('OPEN APP · Мандарин', web_app=WebAppInfo(app_url))])
+    return Markup(rows)
 
 
 def goal_text(goal):
-    label = 'Движение' if goal['kind'] == 'sport' else 'Программирование'
+    label = {'sport': 'Движение', 'code': 'Java · Patchboard'}.get(goal['kind'], 'Личная привычка')
     status = {'pending': 'В планах', 'done': 'Выполнено', 'skipped': 'Пропущено'}[goal['status']]
     return (f"{label} · {goal['day']} · {goal['minutes']} мин\n\n"
             f"{goal['title']}\n{goal['details']}\n\n"
@@ -42,9 +45,20 @@ def profile_text(profile):
             'Серия растёт за дни подряд хотя бы с одной выполненной целью.')
 
 
-HELP = '''Mandarin — движение и код
+HELP = '''Мандарин — твои привычки
 
-/today — две цели на сегодня
+/app — открыть приложение
+/invite — одноразовое приглашение (владелец)
+/join КОД — принять приглашение
+/members — участники (владелец)
+/revoke ID — отключить участника (владелец)
+/habit Читать | 15 | 18:00 — своя ежедневная привычка
+/habitdel ID — убрать привычку
+/enable code off — отключить Java; on — включить
+/enable sport off — отключить стандартное движение
+Дни недели личных привычек выбираются в приложении.
+
+/today — свои цели на сегодня
 /profile — опыт, монеты, серия и достижения
 /focus — таймер программирования
 /course — прогресс 30 занятий Java по Patchboard

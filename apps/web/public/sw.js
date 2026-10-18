@@ -90,6 +90,7 @@ self.addEventListener('message', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  if (url.pathname.startsWith('/habits/') || url.pathname.startsWith('/habits-app/')) return;
   if (url.pathname === SNAPSHOT_URL) {
     event.respondWith(caches.open(OFFLINE_CACHE).then(async cache => (await cache.match(SNAPSHOT_URL)) || new Response('null', {headers:{'Content-Type':'application/json'}})));
     return;

@@ -10,7 +10,8 @@ from .activation import activation_code
 from .course import lessons, lesson_goal
 
 DEFAULTS = dict(timezone='Europe/Moscow', sport_time='10:00', code_time='19:00',
-                summary_time='21:30', track='java', difficulty='normal', paused_until='')
+                summary_time='21:30', track='java', difficulty='normal', paused_until='',
+                sport_enabled='1', code_enabled='1', display_name='')
 ACHIEVEMENTS = {'first': ('Первый шаг', 10), 'ten': ('Десять выполненных целей', 30),
                 'streak3': ('Три дня подряд', 25), 'streak7': ('Неделя привычки', 75)}
 
@@ -122,17 +123,52 @@ class Service:
             return []
         day = self.day()
         with self.store.transaction():
-            generated = [make_goals(day, self._get('start_day'), 'java', self._get('difficulty'))[0]]
-            generated[0]['lesson'] = None
-            if self.course()['current'] is not None:
+            generated = []
+            if self.options()['sport_enabled'] == '1':
+                generated.append(make_goals(day, self._get('start_day'), 'java', self._get('difficulty'))[0])
+                generated[0]['lesson'] = None
+            if self.options()['code_enabled'] == '1' and self.course()['current'] is not None:
                 generated.append(lesson_goal(self.lesson(), day))
+            for h in self.habits():
+                if str(self.local_now().weekday()) in h['weekdays'].split(','):
+                    generated.append(dict(day=day, kind=f"habit:{h['id']}", title=h['title'], details=h['details'],
+                                          minutes=h['minutes'], xp=25, coins=15, lesson=None))
             for g in generated:
                 self.db.execute('''INSERT OR IGNORE INTO goals(day,kind,title,details,minutes,xp,coins)
                                    VALUES (:day,:kind,:title,:details,:minutes,:xp,:coins)''', g)
                 if g['kind'] == 'code':
                     self.db.execute("UPDATE goals SET title=:title,details=:details,minutes=:minutes,xp=:xp,coins=:coins,lesson=:lesson WHERE day=:day AND kind='code' AND lesson IS NULL AND status='pending'", g)
         return [dict(g) for g in self.db.execute(
-            "SELECT * FROM goals WHERE day=? ORDER BY CASE kind WHEN 'sport' THEN 0 ELSE 1 END", (day,))]
+            "SELECT * FROM goals WHERE day=? ORDER BY id", (day,)) if self._kind_enabled(g['kind'])]
+
+    def _kind_enabled(self, kind):
+        if kind in ('sport', 'code'):
+            return self.options()[kind + '_enabled'] == '1'
+        if kind.startswith('habit:'):
+            return any(str(h['id']) == kind.split(':')[1] for h in self.habits())
+        return False
+
+    def habits(self):
+        return [dict(r) for r in self.db.execute('SELECT * FROM habits WHERE active=1 ORDER BY id')]
+
+    def add_habit(self, title, details, minutes, at, weekdays):
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 60 or not isinstance(details, str) or len(details) > 1000:
+            raise UserError('Название: 1–60 символов, описание: до 1000.')
+        if type(minutes) is not int or not 1 <= minutes <= 180:
+            raise UserError('Длительность: от 1 до 180 минут.')
+        if not isinstance(at, str) or not re.fullmatch(r'(?:0[89]|1\d|2[0-2]):[0-5]\d', at):
+            raise UserError('Время привычки: 08:00–22:59.')
+        if not isinstance(weekdays, list) or not weekdays or any(type(d) is not int or not 0 <= d <= 6 for d in weekdays):
+            raise UserError('Выбери дни недели от понедельника до воскресенья.')
+        if len(self.habits()) >= 10:
+            raise UserError('Максимум 10 личных привычек. Сначала убери ненужную.')
+        return self.db.execute('INSERT INTO habits(title,details,minutes,time,weekdays) VALUES (?,?,?,?,?)',
+                               (title.strip(), details.strip(), minutes, at, ','.join(str(d) for d in sorted(set(weekdays))))).lastrowid
+
+    def remove_habit(self, habit_id):
+        if not self.db.execute('UPDATE habits SET active=0 WHERE id=? AND active=1', (habit_id,)).rowcount:
+            raise UserError('Привычка не найдена.')
+        self.db.execute("UPDATE notifications SET state='cancelled' WHERE state='pending' AND goal_id IN (SELECT id FROM goals WHERE kind=?)", (f'habit:{habit_id}',))
 
     def goal(self, goal_id):
         row = self.db.execute('SELECT * FROM goals WHERE id=?', (goal_id,)).fetchone()
@@ -142,6 +178,8 @@ class Service:
 
     def _current_goal(self, goal_id):
         g = self.goal(goal_id)
+        if not self._kind_enabled(g['kind']):
+            raise UserError('Это направление отключено. Открой настройки.')
         if g['day'] != self.day():
             raise UserError('Эта цель уже из прошлого дня. Открой /today.')
         return g
@@ -180,8 +218,9 @@ class Service:
                 self._award(key, 'goal', g['xp'], g['coins'], g['title'])
                 self.db.execute("UPDATE notifications SET state='cancelled' WHERE goal_id=? AND state='pending'", (goal_id,))
                 done = self.db.execute("SELECT COUNT(*) FROM goals WHERE day=? AND status='done'", (g['day'],)).fetchone()[0]
-                if done == 2:
-                    self._award('day:' + g['day'], 'day', 20, 10, 'Обе цели за день')
+                active = [row for row in self.db.execute('SELECT status,kind FROM goals WHERE day=?', (g['day'],)) if self._kind_enabled(row['kind'])]
+                if active and all(row['status'] == 'done' for row in active):
+                    self._award('day:' + g['day'], 'day', 20, 10, 'Все цели за день')
                 total = self.db.execute("SELECT COUNT(*) FROM goals WHERE status='done'").fetchone()[0]
                 checks = {'first': total >= 1, 'ten': total >= 10,
                           'streak3': self._streak() >= 3, 'streak7': self._streak() >= 7}
@@ -208,6 +247,12 @@ class Service:
     def set_option(self, key, value):
         if key not in DEFAULTS or key == 'paused_until':
             raise UserError('Неизвестная настройка.')
+        if not isinstance(value, str):
+            raise UserError('Настройка должна быть строкой.')
+        if key in ('sport_enabled', 'code_enabled') and value not in ('0', '1'):
+            raise UserError('Выбери включено или выключено.')
+        if key == 'display_name' and len(value.strip()) > 40:
+            raise UserError('Имя: до 40 символов.')
         if key == 'timezone':
             try:
                 ZoneInfo(value)
@@ -222,15 +267,21 @@ class Service:
             raise UserError('Выбери light, normal или hard: /difficulty light')
         with self.store.transaction():
             self._put(key, value)
+            if key in ('sport_enabled', 'code_enabled') and value == '0':
+                self.db.execute("UPDATE notifications SET state='disabled' WHERE state='pending' AND goal_id IN (SELECT id FROM goals WHERE kind=?)", (key.removesuffix('_enabled'),))
+            if key in ('sport_enabled', 'code_enabled') and value == '1':
+                self.db.execute("UPDATE notifications SET state='pending' WHERE state='disabled' AND day=? AND goal_id IN (SELECT id FROM goals WHERE kind=? AND status='pending')", (self.day(), key.removesuffix('_enabled')))
             if key.endswith('_time') or key == 'timezone':
                 # Preserve identities, including a request currently in flight.
                 # Deleting one would let _seed_jobs recreate an already sent job.
-                pending = self.db.execute("SELECT * FROM notifications WHERE state='pending' AND kind IN ('reminder','summary')").fetchall()
+                pending = self.db.execute("SELECT * FROM notifications WHERE state IN ('pending','disabled') AND kind IN ('reminder','summary')").fetchall()
                 for job in pending:
-                    option = 'summary_time' if job['kind'] == 'summary' else self.goal(job['goal_id'])['kind'] + '_time'
+                    kind = self.goal(job['goal_id'])['kind'] if job['goal_id'] else None
+                    option = 'summary_time' if job['kind'] == 'summary' else kind + '_time'
                     if key != 'timezone' and key != option:
                         continue
-                    due_at = self._wall_time(job['day'], self._get(option))
+                    at = self._reminder_time(kind) if kind else self._get(option)
+                    due_at = self._wall_time(job['day'], at)
                     self.db.execute('UPDATE notifications SET due_at=?,expires_at=? WHERE id=?',
                                     (due_at, min(due_at + 7200, self._wall_time(job['day'], '23:00')), job['id']))
 
@@ -286,6 +337,16 @@ class Service:
     def history(self):
         return [dict(r) for r in self.db.execute('SELECT * FROM ledger ORDER BY created_at DESC,rowid DESC LIMIT 12')]
 
+    def week(self):
+        start = self.local_now().date() - timedelta(days=6)
+        return [dict(day=(start + timedelta(days=n)).isoformat(), done=self.db.execute(
+            "SELECT COUNT(*) FROM goals WHERE day=? AND status='done'", ((start + timedelta(days=n)).isoformat(),)).fetchone()[0]) for n in range(7)]
+
+    def _reminder_time(self, kind):
+        if kind.startswith('habit:'):
+            return next(h['time'] for h in self.habits() if str(h['id']) == kind.split(':')[1])
+        return self.options()[kind + '_time']
+
     def _wall_time(self, day, clock):
         return datetime.combine(date.fromisoformat(day), time.fromisoformat(clock), self.local_now().tzinfo).timestamp()
 
@@ -296,7 +357,7 @@ class Service:
     def _seed_jobs(self):
         opts, day = self.options(), self.day()
         for g in self.goals():
-            due_at = self._wall_time(day, opts[g['kind'] + '_time'])
+            due_at = self._wall_time(day, self._reminder_time(g['kind']))
             self._insert_job(f"reminder:{day}:{g['kind']}", day, g['id'], 'reminder',
                              due_at, min(due_at + 7200, self._wall_time(day, '23:00')))
         due_at = self._wall_time(day, opts['summary_time'])
@@ -315,7 +376,7 @@ class Service:
             SELECT n.* FROM notifications n LEFT JOIN goals g ON g.id=n.goal_id
             WHERE n.state='pending' AND n.day=? AND n.due_at<=? AND n.expires_at>?
             AND (n.goal_id IS NULL OR g.status='pending') ORDER BY n.due_at,n.id LIMIT 5
-        ''', (day, now.timestamp(), now.timestamp()))]
+        ''', (day, now.timestamp(), now.timestamp())) if r['goal_id'] is None or self._kind_enabled(self.goal(r['goal_id'])['kind'])]
 
     def ready(self, job_id):
         """Revalidate just before I/O; earlier sends may await while state changes."""
@@ -328,7 +389,7 @@ class Service:
             WHERE n.id=? AND n.state='pending' AND n.day=? AND n.due_at<=? AND n.expires_at>?
             AND (n.goal_id IS NULL OR g.status='pending')''',
             (job_id, day, now.timestamp(), now.timestamp())).fetchone()
-        return dict(row) if row else None
+        return dict(row) if row and (row['goal_id'] is None or self._kind_enabled(self.goal(row['goal_id'])['kind'])) else None
 
     def mark_sent(self, job_id):
         self.db.execute("UPDATE notifications SET state='sent' WHERE id=?", (job_id,))

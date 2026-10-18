@@ -238,6 +238,7 @@ def install_bot_manager(app, DB, check_session, rate, audit):
         runner_check(request)
         with DB() as db:
             return [{'id': b.id, 'image': b.image, 'platform': b.platform,
+                     'app_origin': os.getenv('APP_ORIGIN', '').rstrip('/'),
                      'desired_state': b.desired_state, 'revision': b.revision,
                      'token': cipher().decrypt(b.token_cipher.encode()).decode()}
                     for b in db.scalars(select(Bot))]

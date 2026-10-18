@@ -59,7 +59,7 @@ class RestoreTests(unittest.TestCase):
         self.backup_path.write_bytes(self.s.backup())
         db = sqlite3.connect(self.backup_path)
         try:
-            db.execute('PRAGMA user_version=3')
+            db.execute('PRAGMA user_version=4')
             db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
         finally:
             db.close()

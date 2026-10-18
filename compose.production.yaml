@@ -132,11 +132,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks: [services_net]
+    networks: [services_net, habits_net]
 
 volumes:
   materials_data:
   production_data:
 networks:
+  habits_net:
+    name: campus-flow-habits
+    labels: {com.campus-flow.miniapp-network: habits-v1}
   services_net:
   data_net: {internal: true}

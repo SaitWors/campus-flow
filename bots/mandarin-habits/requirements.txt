@@ -1,4 +1,5 @@
 # Tested together on Python 3.12. Install with: python -m pip install -r requirements.txt
+aiohttp==3.14.5
 anyio==4.15.1
 certifi==2026.7.22
 h11==0.16.0

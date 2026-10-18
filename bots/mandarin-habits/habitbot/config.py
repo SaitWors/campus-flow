@@ -3,6 +3,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -10,6 +11,7 @@ class Config:
     token: str = field(repr=False)
     owner_id: int = 0
     data_dir: Path = Path('/data')
+    app_url: str = ''
 
     @classmethod
     def load(cls, env=None, owner_file=None, *, require_token=True):
@@ -25,4 +27,10 @@ class Config:
             raise ValueError('OWNER_ID должен быть числовым Telegram ID.') from None
         if owner < 0:
             raise ValueError('OWNER_ID должен быть положительным, либо 0 для получения /id.')
-        return cls(token, owner, Path(env.get('BOT_DATA_DIR', '/data')))
+        app_url = env.get('BOT_APP_URL', '').strip()
+        if app_url:
+            url = urlsplit(app_url)
+            if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or '\n' in app_url:
+                raise ValueError('BOT_APP_URL должен быть публичным HTTPS URL без credentials/query.')
+            app_url = app_url.rstrip('/') + '/'
+        return cls(token, owner, Path(env.get('BOT_DATA_DIR', '/data')), app_url)
