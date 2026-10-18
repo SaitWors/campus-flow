@@ -180,6 +180,7 @@ def test_runner_injects_platform_token_without_exposing_command_line(monkeypatch
 
     monkeypatch.setattr(runner, 'docker', docker)
     monkeypatch.setattr(runner, 'storage_mount', lambda bot: [])
+    monkeypatch.setattr(runner, 'miniapp_environment', lambda bot: ('bridge', []))
     mkstemp = runner.tempfile.mkstemp
     monkeypatch.setattr(runner.tempfile, 'mkstemp', lambda **kw: mkstemp(prefix=kw['prefix'], dir=tmp_path))
     runner.create(bot, 'cfbot-' + bot['id'], pre_pulled=True)

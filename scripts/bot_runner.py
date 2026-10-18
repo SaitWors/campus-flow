@@ -108,6 +108,36 @@ def storage_mount(bot):
     return ['--mount', 'type=volume,source=' + volume + ',target=/data']
 
 
+def miniapp_environment(bot):
+    result = docker('image', 'inspect', bot['image'])
+    try:
+        labels = json.loads(result.stdout)[0]['Config'].get('Labels') or {}
+        contract = labels.get('com.campus-flow.bot.miniapp')
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise RuntimeError('unable to inspect miniapp contract') from None
+    if contract is None:
+        return 'bridge', []
+    if contract != 'habits-v1' or labels.get('com.campus-flow.bot.storage') != 'data-v1' or bot.get('platform', 'telegram') != 'telegram':
+        raise RuntimeError('unsupported miniapp contract')
+    origin = str(bot.get('app_origin', '')).rstrip('/')
+    if not re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?', origin):
+        raise RuntimeError('miniapp needs an HTTPS app_origin from the updated Campus Flow API')
+    try:
+        if urlsplit(origin).port == 0:
+            raise ValueError
+    except ValueError:
+        raise RuntimeError('invalid miniapp origin port') from None
+    network = docker('network', 'inspect', 'campus-flow-habits', check=False)
+    try:
+        obj = json.loads(network.stdout)[0] if network.returncode == 0 else {}
+        if (obj.get('Driver') != 'bridge' or obj.get('Internal') or obj.get('Options') or
+                (obj.get('Labels') or {}).get('com.campus-flow.miniapp-network') != 'habits-v1'):
+            raise ValueError
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise RuntimeError('deploy the updated Campus Flow web service first: miniapp network missing or unsafe') from None
+    return 'campus-flow-habits', ['BOT_APP_URL=' + origin + '/habits/' + bot['id'] + '/']
+
+
 def create(bot, name, *, pre_pulled=False):
     if not BOT_ID.fullmatch(str(bot.get('id',''))) or name != 'cfbot-' + bot['id']:
         raise ValueError('invalid bot identifier')
@@ -116,6 +146,7 @@ def create(bot, name, *, pre_pulled=False):
     if not pre_pulled:
         pull_image(bot)
     storage = storage_mount(bot)
+    network, app_env = miniapp_environment(bot)
     # The temporary env file prevents exposing the secret in the command line.
     # Docker still stores container environment variables: only host root /
     # privileged Docker administrators should access Docker inspect.
@@ -129,6 +160,8 @@ def create(bot, name, *, pre_pulled=False):
             out.write('PYTHONDONTWRITEBYTECODE=1\nPYTHONUNBUFFERED=1\n')
             if storage:
                 out.write('BOT_DATA_DIR=/data\n')
+            for line in app_env:
+                out.write(line + '\n')
         docker('run', '-d', '--init', '--name', name,
                '--label', 'campus-flow.bot-managed=true',
                '--label', 'campus-flow.bot-id=' + bot['id'],
@@ -139,7 +172,7 @@ def create(bot, name, *, pre_pulled=False):
                '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
                '--memory', '192m', '--memory-swap', '192m',
                '--cpus', '0.35', '--pids-limit', '64',
-               '--network', 'bridge',
+               '--network', network,
                '--log-driver', 'json-file', '--log-opt', 'max-size=5m',
                '--log-opt', 'max-file=2',
                *storage, '--env-file', env_file, bot['image'], timeout=90)

@@ -49,6 +49,8 @@ docker compose up --build -d --wait
 
 **Личная напоминалка Java/спорт:** [подключение через панель](docs/HABIT_BOT_RU.md).
 
+**Мандарин Mini App:** [личные профили, приглашения и OPEN APP](docs/HABIT_MINIAPP_RU.md).
+
 **Панель ботов:** [Private Bot Manager (русская инструкция)](docs/BOT_MANAGER_RU.md) — Telegram и Discord, карточки состояний, логи и запуск только для первоначального владельца с TOTP.
 
 

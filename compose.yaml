@@ -139,7 +139,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks: [services_net]
+    networks: [services_net, habits_net]
 
 volumes:
   materials_data:
@@ -147,6 +147,9 @@ volumes:
   schedule_data:
   notifications_data:
 networks:
+  habits_net:
+    name: campus-flow-habits
+    labels: {com.campus-flow.miniapp-network: habits-v1}
   services_net:
   translation_net: {internal: true}
   auth_data_net: {internal: true}

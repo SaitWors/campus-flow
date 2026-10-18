@@ -10,7 +10,7 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA foreign_keys=ON')
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (0, 1, 2):
+        if version not in (0, 1, 2, 3):
             self.db.close()
             raise RuntimeError('База создана более новой версией бота. Обнови образ.')
         self.db.execute('PRAGMA journal_mode=WAL')
@@ -46,10 +46,15 @@ class Store:
                 goal_id INTEGER UNIQUE NOT NULL REFERENCES goals(id), completed_at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS notifications_due ON notifications(state, due_at);
+            CREATE TABLE IF NOT EXISTS habits (
+                id INTEGER PRIMARY KEY, title TEXT NOT NULL, details TEXT NOT NULL,
+                minutes INTEGER NOT NULL, time TEXT NOT NULL, weekdays TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1
+            );
         ''')
         if 'lesson' not in {row[1] for row in self.db.execute('PRAGMA table_info(goals)')}:
             self.db.execute('ALTER TABLE goals ADD COLUMN lesson INTEGER')
-        self.db.execute('PRAGMA user_version=2')
+        self.db.execute('PRAGMA user_version=3')
 
     @contextmanager
     def transaction(self):

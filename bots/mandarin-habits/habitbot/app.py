@@ -10,7 +10,7 @@ import sys
 import time
 from datetime import timedelta
 
-from telegram import BotCommand, InlineKeyboardButton as Button, InlineKeyboardMarkup as Markup, InputFile
+from telegram import BotCommand, InlineKeyboardButton as Button, InlineKeyboardMarkup as Markup, InputFile, MenuButtonWebApp, WebAppInfo
 from telegram.error import Conflict, Forbidden, NetworkError, RetryAfter, TelegramError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
@@ -53,9 +53,9 @@ class Handlers:
 
     async def show_today(self, message):
         goals = self.s.goals()
-        extra = ('За обе цели — дополнительно 20 XP и 10 монет.' if len(goals)==2
-                 else 'Курс Patchboard завершён. Можно открыть прошлые заметки через /lesson НОМЕР.')
-        await message.reply_text(f'Цели на {self.s.day()}\n'+extra, reply_markup=menu())
+        extra = ('За все цели дня — дополнительно 20 XP и 10 монет.' if goals
+                 else 'На сегодня целей нет. Добавь личную привычку или включи направление в настройках /app.')
+        await message.reply_text(f'Цели на {self.s.day()}\n'+extra, reply_markup=menu(self.config.app_url))
         for g in goals:
             await message.reply_text(goal_text(g), reply_markup=goal_buttons(g))
 
@@ -67,7 +67,7 @@ class Handlers:
                                  f"Маршрут начат с занятия {course['start']}.\n{next_text}\n\n"
                                  'Пропуски не переключают тему. Следующее занятие выдаётся после выполнения текущего, со следующего дня.\n'
                                  'Если день 1 уже сделал до запуска бота: /course start 2\n'
-                                 'Открыть заметку: /lesson или /lesson 2', reply_markup=menu())
+                                 'Открыть заметку: /lesson или /lesson 2', reply_markup=menu(self.config.app_url))
 
     async def show_lesson(self, message, day=None):
         lesson=self.s.lesson(day)
@@ -83,7 +83,7 @@ class Handlers:
         await message.reply_text(f"Магазин наград\nБаланс: {self.s.profile()['coins']} монет\n\n" +
                                  ('\n'.join(lines) or 'Пока пусто.') +
                                  '\n\nСвоя награда: /reward Название | 100\nРеальных платежей нет.',
-                                 reply_markup=Markup(buttons) if buttons else menu())
+                                 reply_markup=Markup(buttons) if buttons else menu(self.config.app_url))
 
     async def show_settings(self, message):
         o = self.s.options()
@@ -92,10 +92,13 @@ class Handlers:
             f"Настройки\n\nЧасовой пояс: {o['timezone']}\nДвижение: {o['sport_time']}\n"
             f"Код: {o['code_time']}\nИтог: {o['summary_time']}\n"
             f"Язык: {o['track']}\nСложность: {o['difficulty']}\nПауза до: {pause}\n\n"
+            f"Движение: {'включено' if o['sport_enabled']=='1' else 'выключено'}\n"
+            f"Java: {'включена' if o['code_enabled']=='1' else 'выключена'}\n"
+            f"Личных привычек: {len(self.s.habits())}\nПриложение: /app\n\n"
             '/time sport 10:00\n/time code 19:00\n/time summary 21:30\n'
             '/tz Europe/Moscow\n/course\n/difficulty light\n/pause 3\n/resume\n\n'
             'Тихие часы: 23:00–08:00. Сложность движения меняется со следующего дня; урок — по плану Patchboard.',
-            reply_markup=menu())
+            reply_markup=menu(self.config.app_url))
 
     async def command(self, update, context):
         if not update.effective_chat or update.effective_chat.type != 'private':
@@ -123,7 +126,7 @@ class Handlers:
             return
         if command == 'start':
             self.s.register(update.effective_user.id)
-            await message.reply_text('Mandarin Habit Bot\nЦели на день: движение и твой урок Java по Patchboard.\n'
+            await message.reply_text('Мандарин · личные привычки\nТвои занятия, расписание и награды.\n'
                                      'Выполняй, получай XP и монеты, выбирай свои награды.\n'
                                      'Все команды: /help. Выполнение подтверждаешь сам.')
             await self.show_today(message)
@@ -136,7 +139,7 @@ class Handlers:
             if command in ('today', 'goals'):
                 await self.show_today(message)
             elif command == 'profile':
-                await message.reply_text(profile_text(self.s.profile()), reply_markup=menu())
+                await message.reply_text(profile_text(self.s.profile()), reply_markup=menu(self.config.app_url))
             elif command == 'shop':
                 await self.show_shop(message)
             elif command == 'settings':
@@ -152,7 +155,7 @@ class Handlers:
                     raise UserError('Пример: /lesson 2')
                 await self.show_lesson(message,int(args[0]) if args else None)
             elif command == 'help':
-                await message.reply_text(HELP, reply_markup=menu())
+                await message.reply_text(HELP, reply_markup=menu(self.config.app_url))
             elif command == 'time':
                 if len(args) != 2 or args[0] not in ('sport', 'code', 'summary'):
                     raise UserError('Пример: /time code 19:00. Виды: sport, code, summary.')
@@ -170,7 +173,7 @@ class Handlers:
                 await message.reply_text(f"Напоминания на паузе до {self.s.options()['paused_until']}. Вернуть: /resume")
             elif command == 'resume':
                 self.s.resume()
-                await message.reply_text('Напоминания снова включены.', reply_markup=menu())
+                await message.reply_text('Напоминания снова включены.', reply_markup=menu(self.config.app_url))
             elif command == 'reward':
                 text = ' '.join(args)
                 if '|' not in text:
@@ -197,7 +200,7 @@ class Handlers:
                 await message.reply_document(InputFile(io.BytesIO(self.s.backup()), filename=f'mandarin-{self.s.day()}.sqlite3'),
                                              caption='Копия прогресса, настроек и магазина. Токена в ней нет. Восстановление описано в README.')
             else:
-                await message.reply_text('Команды и примеры: /help', reply_markup=menu())
+                await message.reply_text('Команды и примеры: /help', reply_markup=menu(self.config.app_url))
         except UserError as exc:
             await message.reply_text(str(exc))
         except (ValueError, OverflowError):
@@ -219,7 +222,7 @@ class Handlers:
                 elif value == 'shop':
                     await self.show_shop(message)
                 elif value == 'profile':
-                    await message.reply_text(profile_text(self.s.profile()), reply_markup=menu())
+                    await message.reply_text(profile_text(self.s.profile()), reply_markup=menu(self.config.app_url))
                 elif value == 'settings':
                     await self.show_settings(message)
                 elif value == 'course':
@@ -237,7 +240,7 @@ class Handlers:
                         text += '\nНовое достижение: ' + ', '.join(r['achievements'])
                 else:
                     text = 'Эта цель уже выполнена. Повторно награда не начисляется.'
-                await message.reply_text(text, reply_markup=menu())
+                await message.reply_text(text, reply_markup=menu(self.config.app_url))
             elif action in ('snooze', 'focus'):
                 end = getattr(self.s, action)(int(value))
                 await message.reply_text(f'Напомню в {end:%H:%M} по твоему часовому поясу.')
@@ -248,7 +251,7 @@ class Handlers:
                                                                Button('Назад', callback_data='menu:today')]]))
             elif action == 'skipok':
                 self.s.skip(int(value))
-                await message.reply_text('Цель пропущена без штрафа и награды. Новый план будет завтра.', reply_markup=menu())
+                await message.reply_text('Цель пропущена без штрафа и награды. Новый план будет завтра.', reply_markup=menu(self.config.app_url))
             elif action == 'buy':
                 q = self.s.quote(int(value))
                 await message.reply_text(f"Подтвердить награду «{q['title']}» за {q['cost']} монет?\n"
@@ -258,7 +261,7 @@ class Handlers:
             elif action == 'confirm':
                 r = self.s.redeem(value)
                 await message.reply_text((f"Награда получена: {r['title']}. Списано {r['cost']} монет."
-                                          if r['changed'] else 'Эта награда уже получена; повторного списания нет.'), reply_markup=menu())
+                                          if r['changed'] else 'Эта награда уже получена; повторного списания нет.'), reply_markup=menu(self.config.app_url))
             else:
                 raise UserError('Открой /today: эта кнопка неизвестна.')
         except UserError as exc:
@@ -268,59 +271,88 @@ class Handlers:
 
     async def text(self, update, context):
         if await self.authorized(update):
-            await update.effective_message.reply_text('Открыть цели: /today. Список команд: /help', reply_markup=menu())
+            await update.effective_message.reply_text('Открыть цели: /today. Список команд: /help', reply_markup=menu(self.config.app_url))
 
 
 async def scheduler(application, service, data_dir):
     while True:
         try:
             (data_dir / 'heartbeat').write_text(str(time.time()), encoding='ascii')
-            for job in service.due():
-                job = service.ready(job['id'])
-                if job is None:
-                    continue
-                try:
-                    if job['kind'] == 'summary':
-                        goals = service.goals()
-                        done = sum(g['status'] == 'done' for g in goals)
-                        text = f"Итог дня: {done} из {len(goals)} целей.\nБаланс: {service.profile()['coins']} монет.\n"
-                        text += 'Все цели закрыты. Хорошая работа!' if done == len(goals) else 'Если осталось немного сил — выбери одну небольшую цель.'
-                        markup = menu()
-                    else:
-                        g = service.goal(job['goal_id'])
-                        prefix = 'Таймер завершён. Выполнил цель? Нажми «Готово».\n\n' if job['kind'] == 'focus' else 'Время для небольшой цели.\n\n'
-                        text, markup = prefix + goal_text(g), goal_buttons(g)
-                    await application.bot.send_message(service.owner_id, text, reply_markup=markup)
-                    service.mark_sent(job['id'])
-                except RetryAfter as exc:
-                    delay = exc.retry_after.total_seconds() if isinstance(exc.retry_after, timedelta) else exc.retry_after
-                    service.retry(job['id'], delay + 1)
-                except Forbidden:
-                    service.retry(job['id'], 86400)
-                    LOG.warning('Владелец заблокировал бота или чат недоступен. Возобнови чат через /start.')
-                except TelegramError as exc:
-                    service.retry(job['id'], min(300, 20 * 2 ** min(job['attempts'], 4)))
-                    LOG.warning('Уведомление будет повторено: %s', type(exc).__name__)
+            from .members import Hub
+            sources = [service.member(uid) for uid in service.users()] if isinstance(service, Hub) else [service]
+            for current in sources:
+                await deliver_notifications(application, current, service if isinstance(service, Hub) else None)
         except Exception:
             LOG.exception('Ошибка планировщика; следующая попытка через 20 секунд')
         await asyncio.sleep(20)
 
 
-def build_application(config, *, service=None, request=None):
-    owns_service = service is None
+async def deliver_notifications(application, service, hub=None):
+    for job in service.due():
+        if hub and service.owner_id not in hub.users():
+            break
+        job = service.ready(job['id'])
+        if job is None:
+            continue
+        try:
+            if job['kind'] == 'summary':
+                goals = service.goals()
+                done = sum(g['status'] == 'done' for g in goals)
+                text = f"Итог дня: {done} из {len(goals)} целей.\nБаланс: {service.profile()['coins']} монет.\n"
+                text += 'Все цели закрыты. Хорошая работа!' if done == len(goals) else 'Если осталось немного сил — выбери одну небольшую цель.'
+                markup = menu()
+            else:
+                g = service.goal(job['goal_id'])
+                prefix = 'Таймер завершён. Выполнил цель? Нажми «Готово».\n\n' if job['kind'] == 'focus' else 'Время для небольшой цели.\n\n'
+                text, markup = prefix + goal_text(g), goal_buttons(g)
+            await application.bot.send_message(service.owner_id, text, reply_markup=markup)
+            service.mark_sent(job['id'])
+        except RetryAfter as exc:
+            delay = exc.retry_after.total_seconds() if isinstance(exc.retry_after, timedelta) else exc.retry_after
+            service.retry(job['id'], delay + 1)
+        except Forbidden:
+            service.retry(job['id'], 86400)
+            LOG.warning('Владелец заблокировал бота или чат недоступен. Возобнови чат через /start.')
+        except TelegramError as exc:
+            service.retry(job['id'], min(300, 20 * 2 ** min(job['attempts'], 4)))
+            LOG.warning('Уведомление будет повторено: %s', type(exc).__name__)
+
+
+def build_application(config, *, service=None, hub=None, request=None):
+    from .members import Hub
+    from .multi import MultiHandlers
+    owns_hub = service is None and hub is None
     config.data_dir.mkdir(parents=True, exist_ok=True)
-    service = service or Service(config.data_dir / 'state.sqlite3', config.owner_id)
-    handlers = Handlers(config, service)
+    if service is None:
+        hub = hub or Hub(config.data_dir, config.owner_id)
+        service = hub.owner
+    handlers = MultiHandlers(config, hub) if hub else Handlers(config, service)
 
     async def start(app):
         try:
             await app.bot.set_my_commands([BotCommand(c, desc) for c, desc in [
+                ('app', 'Открыть приложение'), ('invite', 'Пригласить близкого'),
                 ('today', 'Цели на сегодня'), ('profile', 'Опыт и награды'), ('shop', 'Магазин наград'),
                 ('course','Мой план Patchboard'),('lesson','Исходная заметка урока'),
                 ('focus', 'Таймер программирования'), ('settings', 'Расписание'), ('help', 'Все команды'), ('id', 'Мой Telegram ID')]])
         except TelegramError as exc:
             LOG.warning('Меню команд пока не обновлено: %s', type(exc).__name__)
-        app.bot_data['scheduler'] = asyncio.create_task(scheduler(app, service, config.data_dir))
+        if config.app_url and hub:
+            from aiohttp import web
+            from .miniapp import create_web_app
+            runner = web.AppRunner(create_web_app(hub, config.token, app.bot.username), access_log=None)
+            await runner.setup()
+            try:
+                await web.TCPSite(runner, '0.0.0.0', 8081).start()
+            except BaseException:
+                await runner.cleanup()
+                raise
+            app.bot_data['web_runner'] = runner
+            try:
+                await app.bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text='OPEN APP', web_app=WebAppInfo(config.app_url)))
+            except TelegramError as exc:
+                LOG.warning('Кнопка OPEN APP пока не обновлена: %s', type(exc).__name__)
+        app.bot_data['scheduler'] = asyncio.create_task(scheduler(app, hub or service, config.data_dir))
         LOG.info('Бот запущен. Владелец %s. Часовой пояс %s.', service.owner_id or 'не задан; требуется секретная активация /claim', service.options()['timezone'])
         if str(config.data_dir).startswith('/tmp'):
             LOG.warning('Временное хранилище: прогресс не переживёт перезапуск контейнера. Для постоянной работы нужен том /data.')
@@ -331,10 +363,13 @@ def build_application(config, *, service=None, request=None):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        runner = app.bot_data.pop('web_runner', None)
+        if runner:
+            await runner.cleanup()
 
     async def shutdown(app):
-        if owns_service:
-            service.close()
+        if owns_hub:
+            hub.close()
 
     async def error(update, context):
         LOG.error('Ошибка Telegram: %s', type(context.error).__name__)
@@ -351,7 +386,8 @@ def build_application(config, *, service=None, request=None):
         builder = builder.request(request).get_updates_request(request)
     application = builder.build()
     commands = ['start', 'claim', 'id', 'today', 'goals', 'profile', 'shop', 'settings', 'help', 'time', 'course','lesson',
-                'tz', 'track', 'difficulty', 'pause', 'resume', 'reward', 'rewarddel', 'focus', 'history', 'backup']
+                'tz', 'track', 'difficulty', 'pause', 'resume', 'reward', 'rewarddel', 'focus', 'history', 'backup',
+                'app', 'invite', 'join', 'members', 'revoke', 'habit', 'habitdel', 'enable']
     application.add_handler(CommandHandler(commands, handlers.command))
     application.add_handler(CallbackQueryHandler(handlers.callback))
     application.add_handler(MessageHandler(filters.TEXT, handlers.text))

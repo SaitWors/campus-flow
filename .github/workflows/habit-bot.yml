@@ -1,10 +1,10 @@
 name: Patchboard reminder bot
 on:
   pull_request:
-    paths: ['bots/mandarin-habits/**', 'scripts/bot_runner.py', 'tests/test_bot_runner_storage.py', '.github/workflows/habit-bot.yml']
+    paths: ['bots/mandarin-habits/**', 'scripts/bot_runner.py', 'scripts/check_habit_miniapp_ui.cjs', 'tests/test_bot_runner*.py', 'infra/nginx.conf', 'infra/habits-headers.conf', 'infra/web.Dockerfile', 'compose*.yaml', '.github/workflows/habit-bot.yml']
   push:
     branches: [main]
-    paths: ['bots/mandarin-habits/**', 'scripts/bot_runner.py', '.github/workflows/habit-bot.yml']
+    paths: ['bots/mandarin-habits/**', 'scripts/bot_runner.py', 'scripts/check_habit_miniapp_ui.cjs', 'tests/test_bot_runner*.py', 'infra/nginx.conf', 'infra/habits-headers.conf', 'infra/web.Dockerfile', 'compose*.yaml', '.github/workflows/habit-bot.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,6 +29,23 @@ jobs:
         working-directory: bots/mandarin-habits
       - run: docker build -t cf-habit-bot:test bots/mandarin-habits
       - run: bash bots/mandarin-habits/scripts/test_image.sh cf-habit-bot:test
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Browser dependencies
+        run: |
+          npm install --prefix /tmp/habit-browser --no-audit --no-fund playwright@1.58.2
+          /tmp/habit-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Real Mini App gateway and two-user browser workflow
+        env:
+          CAMPUS_DISPOSABLE: '1'
+          NODE_PATH: /tmp/habit-browser/node_modules
+        run: bash bots/mandarin-habits/scripts/test_gateway.sh cf-habit-bot:test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: habits-miniapp-screenshots
+          path: test-results/habits/
+          if-no-files-found: ignore
   publish:
     needs: verify
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

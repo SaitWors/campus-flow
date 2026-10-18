@@ -117,5 +117,5 @@ class CourseTests(unittest.TestCase):
         self.s=Service(self.path,0,clock=lambda:self.now)
         self.assertEqual(123456,self.s.owner_id)
         self.assertEqual(coins,self.s.profile()['coins'])
-        self.assertEqual(2,self.s.db.execute('PRAGMA user_version').fetchone()[0])
+        self.assertEqual(3,self.s.db.execute('PRAGMA user_version').fetchone()[0])
         self.assertEqual(1,self.s.goals()[1]['lesson'])
