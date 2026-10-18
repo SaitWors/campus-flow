@@ -12,7 +12,17 @@ if docker inspect "$HB_BOT" >/dev/null 2>&1 || docker network inspect "$HB_NET" 
   exit 1
 fi
 docker network create --label com.campus-flow.miniapp-network=habits-v1 "$HB_NET" >/dev/null
-trap 'docker rm -f "$HB_WEB" "$HB_BOT" >/dev/null 2>&1 || true; docker network rm "$HB_NET" >/dev/null 2>&1 || true' EXIT
+cleanup() {
+  HB_EXIT=$?
+  if [[ "$HB_EXIT" != 0 ]]; then
+    docker logs "$HB_BOT" 2>&1 || true
+    docker logs "$HB_WEB" 2>&1 || true
+  fi
+  docker rm -f "$HB_WEB" "$HB_BOT" >/dev/null 2>&1 || true
+  docker network rm "$HB_NET" >/dev/null 2>&1 || true
+  return "$HB_EXIT"
+}
+trap cleanup EXIT
 docker run -d --name "$HB_BOT" --network "$HB_NET" --read-only --user 10001:10001 \
   --tmpfs /tmp:rw,nosuid,nodev,size=32m --memory 192m --cpus 0.35 \
   --cap-drop ALL --security-opt no-new-privileges:true \
@@ -24,7 +34,7 @@ docker run -d --name "$HB_WEB" --network "$HB_NET" -p 127.0.0.1:8765:8080 \
   --mount "type=bind,source=$HB_ROOT/bots/mandarin-habits/web,target=/usr/share/nginx/html/habits-app,readonly" \
   nginx:1.28-alpine >/dev/null
 for HB_ATTEMPT in {1..40}; do
-  if curl --silent --fail http://127.0.0.1:8765/health >/dev/null; then break; fi
+  if [[ $(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/habits/10000000-0000-0000-0000-000000000001/api/state || true) == 401 ]]; then break; fi
   sleep 1
 done
 docker exec "$HB_WEB" nginx -t

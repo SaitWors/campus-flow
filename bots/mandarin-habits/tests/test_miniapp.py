@@ -4,6 +4,7 @@ import json
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -85,3 +86,15 @@ class MiniAppTests(unittest.IsolatedAsyncioTestCase):
         self.hub.revoke(123, 456)
         r = await self.client.get('/api/state', headers={'X-Telegram-Init-Data': signed(456)})
         self.assertEqual(r.status, 403)
+
+    async def test_container_fixture_can_be_mounted_at_filesystem_root(self):
+        from tests import serve_miniapp
+        with patch.object(serve_miniapp, '__file__', '/fixture.py'):
+            app = serve_miniapp.make_fixture(api_only=True)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            r = await client.get('/api/state', headers={'X-Telegram-Init-Data': signed(123)})
+            self.assertEqual(r.status, 200)
+        finally:
+            await client.close()

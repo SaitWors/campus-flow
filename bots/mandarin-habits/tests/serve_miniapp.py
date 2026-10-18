@@ -36,10 +36,10 @@ def make_fixture(api_only=False):
                                           'internal':request.headers.get('X-Internal-Token','')})
             return await handler(request)
         app.middlewares.insert(0, hostile_fixture)
-    assets = Path(__file__).resolve().parents[1] / 'web'
     async def index(request):
         return web.FileResponse(assets / 'index.html')
     if not api_only:
+        assets = Path(__file__).resolve().parents[1] / 'web'
         app.router.add_get('/habits/' + BOT_ID + '/', index)
         app.router.add_static('/habits-app/', assets)
         app.add_subapp('/habits/' + BOT_ID, create_web_app(hub, TOKEN, 'mandarin_fixture_bot'))
