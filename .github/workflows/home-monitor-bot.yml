@@ -1,0 +1,42 @@
+name: Mandarin Home monitor
+
+on:
+  push:
+    branches: [main, codex/mandarin-home-runner]
+    paths:
+      - 'bots/mandarin-home-monitor/**'
+      - '.github/workflows/home-monitor-bot.yml'
+  pull_request:
+    paths:
+      - 'bots/mandarin-home-monitor/**'
+      - '.github/workflows/home-monitor-bot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/saitwors/campus-flow-home-monitor
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: python3 -B bots/mandarin-home-monitor/test_bot.py
+      - run: docker build --tag "$IMAGE:$GITHUB_SHA" bots/mandarin-home-monitor
+      - name: Publish and record the digest
+        if: github.event_name == 'push' && github.repository == 'SaitWors/campus-flow'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$GITHUB_SHA")
+          [[ "$digest" =~ ^ghcr\.io/saitwors/campus-flow-home-monitor@sha256:[a-f0-9]{64}$ ]]
+          printf '\x60%s\x60\n' "$digest" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,15 @@
+[Unit]
+Description=Export home metrics to the registered Campus Flow bot
+After=docker.service wg-quick@wg-mandarin.service
+ConditionPathExists=/etc/mandarin-home-bot/runner.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /usr/local/libexec/mandarin-home/runner_export.py
+LoadCredential=metrics_key:/etc/mandarin-home-bot/metrics_key
+LoadCredential=known_hosts:/etc/mandarin-home-bot/known_hosts
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
