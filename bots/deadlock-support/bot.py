@@ -7,6 +7,7 @@ import secrets
 import time
 from pathlib import Path
 
+import faq
 from messages import CATEGORIES, FORUM, GAME_ISSUES, GAME_SUPPORT, category_name, tr
 from store import Store
 from telegram_api import Telegram, TelegramError
@@ -94,7 +95,7 @@ class SupportBot:
         elif owner is None:
             self.say(chat, tr("setup", language))
         else:
-            self.on_player_message(chat, message, command, language, owner)
+            self.on_player_message(chat, message, command, argument, language, owner)
 
     def claim(self, chat, code, language, now):
         if (self.claim_code and now < self.claim_expires
@@ -109,10 +110,83 @@ class SupportBot:
         self.say(chat, "Код недействителен или уже использован." if language == "ru"
                  else "The code is invalid or has already been used.")
 
-    def menu(self, chat, language):
-        rows = [[button(category_name(key, language), "category:" + key)] for key in CATEGORIES]
+    def menu(self, chat, language, *, tickets=False):
+        if tickets:
+            rows = [[button(category_name(key, language), "category:" + key)] for key in CATEGORIES]
+            rows.append([button(tr("home", language), "menu")])
+        else:
+            rows = [
+                [button(tr("faq_title", language), "faq"), button(tr("faq_search", language), "faq-search")],
+                [button(tr("new_ticket", language), "tickets")],
+            ]
         rows.append([button("Русский", "language:ru"), button("English", "language:en")])
-        self.say(chat, tr("start", language), markup=keyboard(rows))
+        self.say(chat, tr("ticket_category" if tickets else "start", language), markup=keyboard(rows))
+
+    def faq_menu(self, chat, language, group=None):
+        if group is None:
+            heading = tr("faq_title", language)
+            rows = [[button(labels[language], "faq-group:" + key)] for key, labels in faq.GROUPS.items()]
+            back = button(tr("home", language), "menu")
+        else:
+            heading = faq.GROUPS[group][language]
+            rows = [
+                [button(faq.title(article, language), "faq-read:" + key)]
+                for key, article in faq.ARTICLES.items() if article["group"] == group
+            ]
+            back = button(tr("faq_title", language), "faq")
+        rows.append([button(tr("faq_search", language), "faq-search"), back])
+        self.say(chat, heading, markup=keyboard(rows))
+
+    def show_article(self, chat, language, article):
+        rows = [[link] for link in faq.links(article, language)]
+        external = article["group"] in {"game", "valve"} or article["id"] == "account_recovery"
+        contact = "faq_valve_contact" if external else "faq_contact"
+        rows.append([button(tr(contact, language), "faq-ticket:" + article["id"])])
+        rows.append([button(tr("faq_back", language), "faq-group:" + article["group"]),
+                     button(tr("faq_answered", language), "menu")])
+        self.say(chat, faq.answer(article, language), markup=keyboard(rows))
+
+    def faq_search(self, chat, language, query):
+        articles = faq.find_articles(query)
+        if len(articles) == 1:
+            self.show_article(chat, language, articles[0])
+            return
+        rows = [[button(faq.title(article, language), "faq-read:" + article["id"])] for article in articles]
+        rows.append([button(tr("faq_title", language), "faq"),
+                     button(tr("new_ticket", language), "tickets")])
+        self.say(chat, tr("faq_matches" if articles else "faq_no_match", language), markup=keyboard(rows))
+
+    def start_ticket(self, chat, language, category, article=None):
+        self.store.set_player(chat, language, category, article["id"] if article else None)
+        prompt = tr("prompt", language)
+        if article:
+            prompt = faq.title(article, language) + "\n\n" + prompt + "\n\n" + article[language]["report"]
+        elif category in ("contracts", "companion"):
+            prompt += "\n\n" + tr(category + "_hint", language)
+        self.say(chat, prompt, markup=keyboard([[button(tr("home", language), "menu")]]))
+
+    def show_open_ticket(self, chat, language, ticket_id):
+        self.say(chat, tr("open", language, ticket=ticket_id),
+                 markup=keyboard([[button(tr("faq_title", language), "faq")]]))
+
+    def on_faq_button(self, chat, language, kind, value, active):
+        article = faq.ARTICLES.get(value)
+        if kind == "faq-ticket" and article:
+            if active:
+                self.show_open_ticket(chat, language, active["id"])
+            else:
+                self.start_ticket(chat, language, article["category"], article)
+            return
+        if not active:
+            self.store.set_player(chat, language)
+        if kind == "faq-search":
+            self.say(chat, tr("faq_search_open" if active else "faq_search_hint", language),
+                     markup=keyboard([[button(tr("faq_title", language), "faq")]]))
+        elif kind == "faq-read" and article:
+            self.show_article(chat, language, article)
+        else:
+            group = value if kind == "faq-group" and value in faq.GROUPS else None
+            self.faq_menu(chat, language, group)
 
     def on_button(self, chat, action, language):
         owner = self.store.owner_id()
@@ -126,16 +200,19 @@ class SupportBot:
         if kind == "language" and value in ("ru", "en"):
             self.store.set_player(chat, value)
             if active:
-                self.say(chat, tr("open", value, ticket=active["id"]))
+                self.show_open_ticket(chat, value, active["id"])
             else:
                 self.menu(chat, value)
             return
-        if active:
-            self.say(chat, tr("open", language, ticket=active["id"]))
+        if kind in {"faq", "faq-group", "faq-read", "faq-search", "faq-ticket"}:
+            self.on_faq_button(chat, language, kind, value, active)
             return
-        if action == "menu":
+        if active:
+            self.show_open_ticket(chat, language, active["id"])
+            return
+        if action in {"menu", "tickets"}:
             self.store.set_player(chat, language)
-            self.menu(chat, language)
+            self.menu(chat, language, tickets=action == "tickets")
             return
         if kind == "category" and value in ("crash", "ban"):
             self.store.set_player(chat, language)
@@ -143,37 +220,44 @@ class SupportBot:
             rows = [[{"text": tr("steam", language), "url": steam_url.format(language=language)}]]
             if value == "crash":
                 rows.append([{"text": tr("forum", language), "url": FORUM}])
+            rows.append([button(tr("faq_title", language), "faq-group:" + ("game" if value == "crash" else "valve"))])
             rows.append([button(tr("continue", language), "submit:" + value)])
-            rows.append([button(tr("back", language), "menu")])
+            rows.append([button(tr("back", language), "tickets")])
             self.say(chat, tr(value + "_help", language), markup=keyboard(rows))
             return
         if (kind == "category" and value in ("contracts", "companion", "other")
                 or kind == "submit" and value in ("crash", "ban")):
-            self.store.set_player(chat, language, value)
-            prompt = tr("prompt", language)
-            if value in ("contracts", "companion"):
-                prompt += "\n\n" + tr(value + "_hint", language)
-            self.say(chat, prompt, markup=keyboard([[button(tr("back", language), "menu")]]))
+            self.start_ticket(chat, language, value)
 
-    def on_player_message(self, chat, message, command, language, owner):
+    def on_player_message(self, chat, message, command, argument, language, owner):
         player = self.store.player(chat)
         if player:
             language = player["language"]
         active = self.store.open_ticket(chat)
         if command in ("/start", "/new"):
             if active:
-                self.say(chat, tr("open", language, ticket=active["id"]))
+                self.show_open_ticket(chat, language, active["id"])
             else:
                 self.store.set_player(chat, language)
-                self.menu(chat, language)
+                self.menu(chat, language, tickets=command == "/new")
+            return
+        if command == "/faq":
+            if not active:
+                self.store.set_player(chat, language)
+            if argument:
+                self.faq_search(chat, language, argument)
+            else:
+                self.faq_menu(chat, language)
             return
         if command == "/status":
-            status = tr("open", language, ticket=active["id"]) if active else tr("empty", language)
-            self.say(chat, status)
+            if active:
+                self.show_open_ticket(chat, language, active["id"])
+            else:
+                self.say(chat, tr("empty", language))
             return
         if command == "/cancel":
             if active:
-                self.say(chat, tr("open", language, ticket=active["id"]))
+                self.show_open_ticket(chat, language, active["id"])
             else:
                 self.store.set_player(chat, language)
                 self.say(chat, tr("cancelled", language))
@@ -190,7 +274,11 @@ class SupportBot:
 
         draft = player["draft"] if player else None
         if not active and not draft:
-            self.menu(chat, language)
+            question = message.get("text", "").strip()
+            if question:
+                self.faq_search(chat, language, question)
+            else:
+                self.menu(chat, language)
             return
         photos = message.get("photo", [])
         body = (message.get("caption", "") if photos else message.get("text", "")).strip()
@@ -199,10 +287,11 @@ class SupportBot:
             return
 
         category = active["category"] if active else draft
-        ticket_id = active["id"] if active else self.store.create_ticket(chat, category)
+        topic = active["topic"] if active else player["topic"]
+        ticket_id = active["id"] if active else self.store.create_ticket(chat, category, topic)
         if not active:
             self.store.set_player(chat, language)
-        heading = f"Обращение #{ticket_id} · {category_name(category, 'ru')}"
+        heading = f"Обращение #{ticket_id} · {self.ticket_label(category, topic)}"
         notice = f"{heading}\n\n{body}" if body else heading
         if photos:
             caption = text_part(notice, 1024)
@@ -212,6 +301,12 @@ class SupportBot:
         else:
             self.say(owner, notice, ticket_id=ticket_id)
         self.say(chat, tr("added" if active else "created", language, ticket=ticket_id))
+
+    @staticmethod
+    def ticket_label(category, topic):
+        label = category_name(category, "ru")
+        article = faq.ARTICLES.get(topic)
+        return f"{label} · {faq.title(article, 'ru')}" if article else label
 
     def on_owner_message(self, chat, message, command, argument, now):
         if command in ("/start", "/help"):
@@ -223,7 +318,8 @@ class SupportBot:
             if not rows:
                 self.say(chat, "Открытых обращений нет.")
                 return
-            entries = [f"#{row['id']} · {category_name(row['category'], 'ru')}" for row in rows[:INBOX_LIMIT]]
+            entries = [f"#{row['id']} · {self.ticket_label(row['category'], row['topic'])}"
+                       for row in rows[:INBOX_LIMIT]]
             if len(rows) > INBOX_LIMIT:
                 entries.append(f"Показаны первые {INBOX_LIMIT} открытых обращений.")
             self.say(chat, "Открытые обращения\n\n" + "\n".join(entries))

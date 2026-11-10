@@ -12,9 +12,31 @@ GAME_SUPPORT = "https://help.steampowered.com/{language}/wizard/HelpWithGame/?ap
 
 TEXT = {
     "start": (
-        "Поддержка Deadlock Contracts, фанатского проекта по Deadlock. Выбери, с чем нужна помощь.",
-        "Support for Deadlock Contracts, a fan project for Deadlock. What do you need help with?",
+        "Поддержка Deadlock Contracts, фанатского проекта по Deadlock. Напиши вопрос или выбери тему из FAQ.",
+        "Support for Deadlock Contracts, a fan project for Deadlock. Type a question or choose an FAQ topic.",
     ),
+    "ticket_category": ("Выбери тему обращения.", "Choose a ticket category."),
+    "new_ticket": ("Создать обращение", "Open a support ticket"),
+    "faq_title": ("Частые вопросы", "Frequently asked questions"),
+    "faq_search": ("Найти решение", "Find a solution"),
+    "faq_search_hint": (
+        "Напиши, что случилось. Например, «вылетает посреди матча», «не пришёл XP» или «истёк код привязки».",
+        "Type what happened. For example, “crashes mid match”, “missing XP” or “pairing code expired”.",
+    ),
+    "faq_search_open": (
+        "Для поиска при открытом обращении используй команду /faq с вопросом. Например, /faq не пришёл XP.",
+        "Use /faq followed by a question while you have an open ticket. For example, /faq missing XP.",
+    ),
+    "faq_matches": ("Возможно, подходит одна из этих подсказок.", "These guides may match your question."),
+    "faq_no_match": (
+        "Подходящей подсказки не нашлось. Можно выбрать тему или создать обращение.",
+        "No matching guide. You can browse the topics or open a support ticket.",
+    ),
+    "faq_contact": ("Не помогло · написать в поддержку", "Still need help? Contact support"),
+    "faq_valve_contact": ("Написать в Deadlock Contracts", "Contact Deadlock Contracts"),
+    "faq_answered": ("Помогло", "That helped"),
+    "faq_back": ("К вопросам раздела", "Back to this topic"),
+    "home": ("В главное меню", "Main menu"),
     "setup": (
         "Поддержка Deadlock Contracts ещё настраивается. Попробуй позже.",
         "Deadlock Contracts support is still being set up. Please try again later.",
@@ -63,8 +85,10 @@ TEXT = {
     "empty": ("Открытых обращений нет. Создать обращение можно через /new.",
               "You have no open tickets. Use /new to open one."),
     "supported": ("Отправь текст или фото.", "Send a text message or a photo."),
-    "help": ("/new — новое обращение\n/status — состояние обращения\n/cancel — отменить черновик\n/language — язык",
-             "/new — new ticket\n/status — ticket status\n/cancel — cancel draft\n/language — language"),
+    "help": ("/faq — частые вопросы\n/faq вопрос — найти решение\n/new — новое обращение\n"
+             "/status — состояние обращения\n/cancel — отменить черновик\n/language — язык",
+             "/faq — frequently asked questions\n/faq question — find a solution\n/new — new ticket\n"
+             "/status — ticket status\n/cancel — cancel draft\n/language — language"),
     "language": ("Выбери язык.", "Choose a language."),
     "reply": ("Ответ по обращению #{ticket}\n\n", "Reply to ticket #{ticket}\n\n"),
 }

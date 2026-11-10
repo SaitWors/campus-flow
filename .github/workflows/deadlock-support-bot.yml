@@ -23,7 +23,7 @@ jobs:
           docker build --tag deadlock-support:test bots/deadlock-support
           docker run --rm --read-only --user 10001:10001 --cap-drop ALL --network none \
             --volume /data --entrypoint python deadlock-support:test -c \
-            'import os; from store import Store; assert os.getuid() == 10001; store = Store("/data/support.sqlite3"); store.bind_bot(1); assert store.owner_id() is None; store.close()'
+            'import os, bot; from faq import ARTICLES; from store import Store; assert os.getuid() == 10001; assert ARTICLES; store = Store("/data/support.sqlite3"); store.bind_bot(1); assert store.owner_id() is None; store.close()'
   publish:
     needs: verify
     if: >-

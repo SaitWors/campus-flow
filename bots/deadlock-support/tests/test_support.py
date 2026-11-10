@@ -2,8 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
+import faq
 from bot import SupportBot
+from messages import CATEGORIES
 from store import Store
 from telegram_api import TelegramError
 
@@ -200,9 +203,128 @@ class SupportTest(unittest.TestCase):
         self.deliver(PLAYER, text="/start", chat_type="group")
         self.assertEqual(self.api.to(PLAYER), [])
 
+    def test_faq_is_in_the_start_menu_and_game_answers_link_to_official_support(self):
+        self.claim()
+        self.deliver(PLAYER, text="/start")
+        menu = self.api.to(PLAYER)[-1][0]["reply_markup"]["inline_keyboard"]
+        self.assertIn("faq", [button.get("callback_data") for row in menu for button in row])
+        self.deliver(PLAYER, category="faq")
+        self.deliver(PLAYER, category="faq-group:game")
+        self.deliver(PLAYER, category="faq-read:game_crash")
+        answer = self.api.to(PLAYER)[-1][0]
+        self.assertIn("Verify integrity", answer["text"])
+        buttons = [button for row in answer["reply_markup"]["inline_keyboard"] for button in row]
+        self.assertTrue(any(button.get("url", "").startswith("https://help.steampowered.com/") for button in buttons))
+        self.assertEqual(len(self.api.to(OWNER)), 1)
+
+    def test_russian_free_text_finds_the_abandon_penalty_without_opening_a_ticket(self):
+        self.claim()
+        self.deliver(PLAYER, category="language:ru")
+        self.deliver(PLAYER, text="Меня забанили после того, как я вышел из матча")
+        answer = self.api.to(PLAYER)[-1][0]
+        self.assertIn("Штраф после выхода или AFK", answer["text"])
+        self.assertIsNone(self.store.open_ticket(PLAYER))
+        self.assertEqual(len(self.api.to(OWNER)), 1)
+
+    def test_a_faq_ticket_keeps_its_topic_after_restart(self):
+        self.claim()
+        self.deliver(PLAYER, category="faq-read:contract_count")
+        self.deliver(PLAYER, category="faq-ticket:contract_count")
+        self.assertIsNone(self.store.open_ticket(PLAYER))
+        self.restart()
+        self.deliver(PLAYER, text="Only this match did not count")
+        notice, reply_id = self.api.to(OWNER)[-1]
+        self.assertIn("Контракт не засчитался", notice["text"])
+        self.assertIn("Only this match", notice["text"])
+        self.deliver(OWNER, text="/inbox")
+        self.assertIn("Контракт не засчитался", self.api.to(OWNER)[-1][0]["text"])
+        self.deliver(OWNER, text="Send the match ID, please.", reply_to=reply_id)
+        self.assertIn("Send the match ID", self.api.to(PLAYER)[-1][0]["text"])
+
+    def test_faq_search_with_an_open_ticket_does_not_send_the_search_to_the_owner(self):
+        self.claim()
+        self.open_ticket()
+        self.deliver(PLAYER, text="/faq pairing code expired")
+        self.assertIn("Pairing code", self.api.to(PLAYER)[-1][0]["text"])
+        self.assertEqual(len(self.api.to(OWNER)), 2)
+        self.assertEqual(self.store.open_ticket(PLAYER)["id"], 1)
+
+    def test_opening_faq_after_a_draft_does_not_send_free_text_as_a_report(self):
+        self.claim()
+        self.deliver(PLAYER, category="category:contracts")
+        self.deliver(PLAYER, category="faq-search")
+        self.deliver(PLAYER, text="game crashes mid match")
+        self.assertIsNone(self.store.open_ticket(PLAYER))
+        self.assertEqual(len(self.api.to(OWNER)), 1)
+
+    def test_unknown_question_offers_the_catalog_and_ticket_choice(self):
+        self.claim()
+        self.deliver(PLAYER, text="/faq qzxqw unmapped-phrase")
+        buttons = self.api.to(PLAYER)[-1][0]["reply_markup"]["inline_keyboard"]
+        actions = {button.get("callback_data") for row in buttons for button in row}
+        self.assertTrue({"faq", "tickets"} <= actions)
+        self.assertIsNone(self.store.open_ticket(PLAYER))
+
+    def test_upgrading_the_original_database_preserves_owner_and_pending_reports(self):
+        self.claim()
+        self.deliver(PLAYER, category="category:contracts")
+        report = self.update(PLAYER, text="Queued on the original schema")
+        self.bot.handle(report)
+        with self.store.db:
+            self.store.db.execute("DROP TABLE faq_tickets")
+            self.store.db.execute("DROP TABLE faq_drafts")
+
+        self.restart()
+        self.bot.handle(report)
+        self.bot.flush()
+        self.assertEqual(self.store.owner_id(), OWNER)
+        self.assertIsNone(self.bot.claim_code)
+        self.assertEqual(self.store.open_ticket(PLAYER)["id"], 1)
+        self.assertEqual(len(self.api.to(OWNER)), 2)
+        self.assertIn("Queued on the original schema", self.api.to(OWNER)[-1][0]["text"])
+
     def test_data_volume_cannot_be_rebound_to_another_telegram_bot(self):
         with self.assertRaises(ValueError):
             self.store.bind_bot(99999)
+
+
+class FaqTest(unittest.TestCase):
+    def test_common_bilingual_searches_include_the_relevant_guide(self):
+        for query, expected in (
+            ("Deadlock won’t start", "game_launch"),
+            ("игра вылетает посреди матча", "game_crash"),
+            ("разбаньте пж", "penalty_abandon"),
+            ("How many Low Priority games remain?", "penalty_low"),
+            ("не засчитался контракт", "contract_count"),
+            ("у меня не пришёл XP", "contract_xp"),
+            ("pairing code expired", "companion_pair"),
+            ("Companion not detecting match after patch", "companion_events"),
+            ("my pack animation froze", "pack_replay"),
+            ("как удалить аккаунт", "account_data"),
+        ):
+            with self.subTest(query=query):
+                self.assertIn(expected, {article["id"] for article in faq.find_articles(query)})
+
+    def test_every_answer_is_bilingual_and_uses_valid_telegram_buttons(self):
+        official_domains = {
+            "deadlock-contracts.online", "help.steampowered.com", "store.steampowered.com",
+            "forums.playdeadlock.com", "support.overwolf.com",
+        }
+        self.assertEqual({article["group"] for article in faq.ARTICLES.values()}, set(faq.GROUPS))
+        for key, article in faq.ARTICLES.items():
+            with self.subTest(article=key):
+                self.assertIn(article["category"], CATEGORIES)
+                self.assertLessEqual(len(f"faq-ticket:{key}".encode()), 64)
+                for language in ("ru", "en"):
+                    self.assertTrue(article[language]["report"])
+                    self.assertGreaterEqual(len(article[language]["steps"]), 2)
+                    self.assertLessEqual(len(faq.answer(article, language).encode("utf-16-le")), 8192)
+                    sources = list(faq.links(article, language))
+                    self.assertTrue(sources)
+                    for link in sources:
+                        url = urlsplit(link["url"])
+                        self.assertEqual(url.scheme, "https")
+                        self.assertIn(url.hostname, official_domains)
 
 
 if __name__ == "__main__":

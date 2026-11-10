@@ -27,6 +27,14 @@ class Store:
             );
             CREATE UNIQUE INDEX IF NOT EXISTS one_open_ticket
                 ON tickets(chat_id) WHERE closed_at IS NULL;
+            CREATE TABLE IF NOT EXISTS faq_drafts (
+                chat_id INTEGER PRIMARY KEY REFERENCES players(chat_id),
+                topic TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS faq_tickets (
+                ticket_id INTEGER PRIMARY KEY REFERENCES tickets(id),
+                topic TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS telegram_updates (
                 id INTEGER PRIMARY KEY,
                 processed_at INTEGER NOT NULL
@@ -75,28 +83,45 @@ class Store:
             self.db.execute("DELETE FROM telegram_updates WHERE processed_at < ?", (now - 172800,))
 
     def player(self, chat_id):
-        return self.db.execute("SELECT * FROM players WHERE chat_id = ?", (chat_id,)).fetchone()
+        return self.db.execute("""
+            SELECT p.*, f.topic FROM players AS p
+            LEFT JOIN faq_drafts AS f USING (chat_id) WHERE p.chat_id = ?
+        """, (chat_id,)).fetchone()
 
-    def set_player(self, chat_id, language, draft=None):
+    def set_player(self, chat_id, language, draft=None, topic=None):
         self.db.execute("""
             INSERT INTO players VALUES (?, ?, ?)
             ON CONFLICT(chat_id) DO UPDATE SET language = excluded.language, draft = excluded.draft
         """, (chat_id, language, draft))
+        if topic is None:
+            self.db.execute("DELETE FROM faq_drafts WHERE chat_id = ?", (chat_id,))
+        else:
+            self.db.execute("""
+                INSERT INTO faq_drafts VALUES (?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET topic = excluded.topic
+            """, (chat_id, topic))
 
     def open_ticket(self, chat_id):
-        return self.db.execute(
-            "SELECT * FROM tickets WHERE chat_id = ? AND closed_at IS NULL", (chat_id,)
-        ).fetchone()
+        return self.db.execute("""
+            SELECT t.*, f.topic FROM tickets AS t
+            LEFT JOIN faq_tickets AS f ON f.ticket_id = t.id
+            WHERE t.chat_id = ? AND t.closed_at IS NULL
+        """, (chat_id,)).fetchone()
 
-    def create_ticket(self, chat_id, category):
-        return self.db.execute(
+    def create_ticket(self, chat_id, category, topic=None):
+        ticket_id = self.db.execute(
             "INSERT INTO tickets (chat_id, category) VALUES (?, ?)", (chat_id, category)
         ).lastrowid
+        if topic is not None:
+            self.db.execute("INSERT INTO faq_tickets VALUES (?, ?)", (ticket_id, topic))
+        return ticket_id
 
     def list_open(self, limit):
-        return self.db.execute(
-            "SELECT id, category FROM tickets WHERE closed_at IS NULL ORDER BY id LIMIT ?", (limit,)
-        ).fetchall()
+        return self.db.execute("""
+            SELECT t.id, t.category, f.topic FROM tickets AS t
+            LEFT JOIN faq_tickets AS f ON f.ticket_id = t.id
+            WHERE t.closed_at IS NULL ORDER BY t.id LIMIT ?
+        """, (limit,)).fetchall()
 
     def ticket(self, ticket_id):
         return self.db.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
