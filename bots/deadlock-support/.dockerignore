@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!bot.py
+!faq.py
+!faq_catalog.json
+!messages.py
+!store.py
+!telegram_api.py

@@ -1,0 +1,1873 @@
+{
+  "groups": {
+    "game": {
+      "ru": "Вылеты, FPS и подключение",
+      "en": "Crashes, FPS & connection"
+    },
+    "valve": {
+      "ru": "Баны, подбор и доступ к игре",
+      "en": "Penalties, matchmaking & access"
+    },
+    "contracts": {
+      "ru": "Контракты и опыт",
+      "en": "Contracts & XP"
+    },
+    "companion": {
+      "ru": "Companion и Overwolf",
+      "en": "Companion & Overwolf"
+    },
+    "site": {
+      "ru": "Сайт, аккаунт и карточки",
+      "en": "Website, account & cards"
+    }
+  },
+  "sources": {
+    "steam_game": {
+      "ru": "Deadlock в поддержке Steam",
+      "en": "Deadlock on Steam Support",
+      "url": "https://help.steampowered.com/{language}/wizard/HelpWithGame/?appid=1422450"
+    },
+    "steam_tech": {
+      "ru": "Технические проблемы · Steam",
+      "en": "Technical issues · Steam",
+      "url": "https://help.steampowered.com/{language}/wizard/HelpWithGameTechnicalIssue/?appid=1422450"
+    },
+    "verify": {
+      "ru": "Проверка файлов · Steam",
+      "en": "Verify files · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/0C48-FCBD-DA71-93EB"
+    },
+    "launch_options": {
+      "ru": "Параметры запуска · Steam",
+      "en": "Launch options · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/7D01-D2DD-D75E-2955"
+    },
+    "downloads": {
+      "ru": "Проблемы с загрузкой · Steam",
+      "en": "Download issues · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/21F5-8D5D-0141-7A5E"
+    },
+    "drivers": {
+      "ru": "Обновление драйверов · Steam",
+      "en": "Updating drivers · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/5799-495F-1F25-D15B"
+    },
+    "network": {
+      "ru": "Проверка соединения · Steam",
+      "en": "Network troubleshooting · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/669A-2F68-D1D1-A5EC"
+    },
+    "steam_login": {
+      "ru": "Помощь со входом в Steam",
+      "en": "Steam sign-in help",
+      "url": "https://help.steampowered.com/{language}/login"
+    },
+    "steam_recovery": {
+      "ru": "Восстановить аккаунт Steam",
+      "en": "Recover a Steam account",
+      "url": "https://help.steampowered.com/{language}/wizard/HelpWithAccountStolen"
+    },
+    "game_ban": {
+      "ru": "Что такое игровой бан · Steam",
+      "en": "What a game ban means · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/46DB-4CEC-F7E9-49E5"
+    },
+    "vac": {
+      "ru": "Что такое VAC · Steam",
+      "en": "What a VAC ban means · Steam",
+      "url": "https://help.steampowered.com/{language}/faqs/view/647C-5CC1-7EA9-3C29"
+    },
+    "store": {
+      "ru": "Deadlock в Steam",
+      "en": "Deadlock on Steam",
+      "url": "https://store.steampowered.com/app/1422450/Deadlock/"
+    },
+    "forum": {
+      "ru": "Форум Deadlock · Bug Reports",
+      "en": "Deadlock forum · Bug Reports",
+      "url": "https://forums.playdeadlock.com/forums/bug-reports.6/"
+    },
+    "bug_guide": {
+      "ru": "Как сообщить о баге · Valve",
+      "en": "How to report a bug · Valve",
+      "url": "https://forums.playdeadlock.com/threads/posting-bugs.5/"
+    },
+    "matchmaking": {
+      "ru": "Тема о подборе · форум Deadlock",
+      "en": "Matchmaking thread · Deadlock forum",
+      "url": "https://forums.playdeadlock.com/threads/bad-matchmaking-thread.35834/"
+    },
+    "overwolf": {
+      "ru": "Совместимость · Overwolf",
+      "en": "Compatibility · Overwolf",
+      "url": "https://support.overwolf.com/support/solutions/articles/9000177155-general-issues-and-solutions"
+    },
+    "ow_overlay": {
+      "ru": "Диагностика оверлея · Overwolf",
+      "en": "Overlay troubleshooting · Overwolf",
+      "url": "https://support.overwolf.com/support/solutions/articles/9000202391"
+    },
+    "ow_events": {
+      "ru": "Состояние игровых событий · Overwolf",
+      "en": "Game event status · Overwolf",
+      "url": "https://support.overwolf.com/support/solutions/articles/9000181808-apps-and-highlights-status-explanation"
+    },
+    "ow_version": {
+      "ru": "Как узнать версию · Overwolf",
+      "en": "How to find the app version · Overwolf",
+      "url": "https://support.overwolf.com/support/solutions/articles/9000178631-how-to-find-an-overwolf-app-s-version"
+    },
+    "guide": {
+      "ru": "Как играть · Deadlock Contracts",
+      "en": "How it works · Deadlock Contracts",
+      "url": "https://deadlock-contracts.online/{language}/how-it-works"
+    },
+    "site_status": {
+      "ru": "Статус Deadlock Contracts",
+      "en": "Deadlock Contracts status",
+      "url": "https://deadlock-contracts.online/{language}/status"
+    },
+    "site": {
+      "ru": "Открыть Deadlock Contracts",
+      "en": "Open Deadlock Contracts",
+      "url": "https://deadlock-contracts.online/{language}/"
+    },
+    "site_support": {
+      "ru": "Поддержка Deadlock Contracts",
+      "en": "Deadlock Contracts support",
+      "url": "https://deadlock-contracts.online/{language}/support"
+    },
+    "cards": {
+      "ru": "Коллекция · Deadlock Contracts",
+      "en": "Collection · Deadlock Contracts",
+      "url": "https://deadlock-contracts.online/{language}/cards"
+    },
+    "privacy": {
+      "ru": "Политика конфиденциальности",
+      "en": "Privacy notice",
+      "url": "https://deadlock-contracts.online/{language}/privacy"
+    }
+  },
+  "articles": [
+    {
+      "id": "game_launch",
+      "group": "game",
+      "category": "crash",
+      "aliases": [
+        "не запускается",
+        "не открывается игра",
+        "вылетает при запуске",
+        "вылет на старте",
+        "чёрный экран",
+        "заставка",
+        "black screen",
+        "won't launch",
+        "won't start",
+        "does not start",
+        "not launching",
+        "crashes on startup",
+        "crash on launch",
+        "preparing to launch"
+      ],
+      "sources": [
+        "verify",
+        "launch_options",
+        "steam_tech"
+      ],
+      "ru": {
+        "title": "Игра не запускается или чёрный экран",
+        "steps": [
+          "Полностью закрой Deadlock и Steam, перезагрузи компьютер и попробуй запустить игру из библиотеки Steam.",
+          "Проверь файлы игры через свойства Deadlock → Установленные файлы. Если ты добавлял параметры запуска, сохрани их отдельно и для одного запуска оставь поле пустым.",
+          "Если проблема осталась, проверь актуальность драйвера видеокарты у производителя. Запиши точную ошибку и отправь её через техническую поддержку Steam или форум Deadlock."
+        ],
+        "report": "Укажи ОС, видеокарту, когда появляется чёрный экран и точный текст ошибки, если он есть."
+      },
+      "en": {
+        "title": "Game will not launch or black screen",
+        "steps": [
+          "Fully close Deadlock and Steam, restart the computer, then launch Deadlock from your Steam Library.",
+          "Open Deadlock Properties → Installed Files → Verify integrity. If you added launch options, save a copy and test once with the field empty.",
+          "If it persists, check the GPU vendor for a current driver. Record the exact error and report it to Steam Support or the Deadlock forum."
+        ],
+        "report": "Include your OS, GPU, when the black screen appears and the exact error, if shown."
+      }
+    },
+    {
+      "id": "game_crash",
+      "group": "game",
+      "category": "crash",
+      "aliases": [
+        "вылетает",
+        "вылетает из игры",
+        "вылетает без ошибки",
+        "вылетает посреди матча",
+        "вылетает во время матча",
+        "вылетела игра",
+        "крашится",
+        "вылет на рабочий стол",
+        "crashes",
+        "keeps crashing",
+        "crashes mid match",
+        "mid game crash",
+        "crash to desktop",
+        "crash without error",
+        "game closes",
+        "constant game crashes",
+        "crashes when rejoining",
+        "вылет",
+        "вылеты",
+        "игра закрывается",
+        "краш",
+        "crash",
+        "crashing"
+      ],
+      "sources": [
+        "verify",
+        "steam_tech",
+        "bug_guide"
+      ],
+      "ru": {
+        "title": "Игра вылетает во время матча",
+        "steps": [
+          "В Steam открой свойства Deadlock → Установленные файлы → Проверить целостность файлов. Установи доступное обновление игры и перезапусти Steam.",
+          "Если вылет повторяется, попробуй воспроизвести его в тренировке с закрытым Companion. Если нужно, отключай другие необязательные оверлеи по одному, чтобы понять, что влияет на вылет.",
+          "Если игра вылетает и без Companion, обратись в Steam или на форум Deadlock. Если вылет возникает только с Companion, отправь обращение в Deadlock Contracts."
+        ],
+        "report": "Укажи время с часовым поясом, режим, Match ID, если есть, и результат проверки без Companion."
+      },
+      "en": {
+        "title": "Game crashes during a match",
+        "steps": [
+          "In Steam, open Deadlock Properties → Installed Files → Verify integrity of game files. Install any available game update and restart Steam.",
+          "If the crash returns, try to reproduce it in practice with Companion closed. If needed, turn off other optional overlays one at a time to isolate the trigger.",
+          "If the game also crashes without Companion, use Steam Support or the Deadlock forum. If it only happens with Companion open, contact Deadlock Contracts."
+        ],
+        "report": "Include the time and time zone, mode, match ID if available, and whether it also crashes with Companion closed."
+      }
+    },
+    {
+      "id": "game_fps",
+      "group": "game",
+      "category": "crash",
+      "aliases": [
+        "низкий фпс",
+        "просадки фпс",
+        "падает фпс",
+        "фризы",
+        "микрофризы",
+        "фризит",
+        "подвисает игра",
+        "низкий fps",
+        "fps drops",
+        "low fps",
+        "stuttering",
+        "microstutter",
+        "frame drops",
+        "freezes",
+        "freeze in game",
+        "лагает",
+        "lag"
+      ],
+      "sources": [
+        "drivers",
+        "steam_tech"
+      ],
+      "ru": {
+        "title": "Просадки FPS или фризы",
+        "steps": [
+          "Проверь, падает ли именно FPS. Если FPS стабилен, а игроки перемещаются рывками или действия запаздывают, открой подсказку о пинге.",
+          "В тренировке снизь одну тяжёлую настройку графики или разрешение и сравни FPS в том же месте. Закрой необязательную запись экрана и оверлеи по одному.",
+          "Проверь драйвер видеокарты у производителя. Если проблема появилась после патча, запиши настройку, место или способность, на которых она воспроизводится."
+        ],
+        "report": "Укажи ОС, видеокарту, FPS до и после просадки и место, где она повторяется."
+      },
+      "en": {
+        "title": "Low FPS or stuttering",
+        "steps": [
+          "Check whether FPS actually drops. If FPS stays steady but movement jumps or inputs arrive late, use the network and ping guide.",
+          "In practice, lower one demanding graphics setting or the resolution and compare FPS in the same spot. Turn off optional recording or overlays one at a time.",
+          "Check the GPU vendor for driver updates. If this began after a patch, record the setting, location or ability that reproduces it."
+        ],
+        "report": "Include your OS, GPU, FPS before and during the slowdown, and a place where it happens again."
+      }
+    },
+    {
+      "id": "game_network",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "высокий пинг",
+        "пинг",
+        "потеря пакетов",
+        "дисконнект",
+        "отключает от сервера",
+        "выкидывает с сервера",
+        "не могу переподключиться",
+        "переподключение",
+        "high ping",
+        "packet loss",
+        "network jitter",
+        "disconnect",
+        "disconnected from server",
+        "lost connection",
+        "reconnect fails",
+        "rejoin not working",
+        "rubberbanding",
+        "лагает",
+        "lag"
+      ],
+      "sources": [
+        "network",
+        "steam_tech",
+        "bug_guide"
+      ],
+      "ru": {
+        "title": "Пинг, обрывы и переподключение",
+        "steps": [
+          "Если игра предлагает вернуться в матч, сначала попробуй переподключиться. Сохрани точный текст ошибки и время.",
+          "При повторении останови фоновые загрузки. Если возможно, сравни Wi-Fi с проводным соединением и проверь, есть ли обрывы в других сервисах Steam.",
+          "Если обрывы только в Deadlock, сообщи о них в поддержку Steam или Bug Reports. Добавь регион, Match ID и время, если они известны."
+        ],
+        "report": "Укажи регион, время с часовым поясом, Match ID, пинг и что показала попытка переподключения."
+      },
+      "en": {
+        "title": "High ping, disconnects or failed rejoin",
+        "steps": [
+          "If the game offers Rejoin, try returning to the match first. Note the exact error and time.",
+          "If it repeats, pause background downloads. If possible, compare Wi-Fi with a wired connection and check whether other Steam services also disconnect.",
+          "If only Deadlock is affected, report it via Steam Support or Bug Reports with your region, match ID and time if available."
+        ],
+        "report": "Include the region, time zone, match ID, ping and what happened when you tried to rejoin."
+      }
+    },
+    {
+      "id": "game_queue",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "не ищет матч",
+        "вечный поиск",
+        "бесконечный поиск",
+        "завис поиск",
+        "зависла очередь",
+        "не могу найти матч",
+        "уже ищешь матч",
+        "уже в игре",
+        "cannot enter matchmaking",
+        "already in a game",
+        "already trying to find a match",
+        "stuck in queue",
+        "stuck matchmaking",
+        "can't queue",
+        "queue stuck"
+      ],
+      "sources": [
+        "steam_tech",
+        "forum"
+      ],
+      "ru": {
+        "title": "Поиск матча завис или не запускается",
+        "steps": [
+          "Проверь, показывает ли игра активный матч, ограничение или Low Priority. При доступной кнопке возврата попробуй вернуться в текущий матч.",
+          "Если активного матча нет, выйди из очереди доступной кнопкой, закрой игру и проверь, что Steam установил обновления. После этого попробуй запустить поиск ещё раз.",
+          "Если ошибка о текущем матче или очереди осталась, отправь её точный текст в Bug Reports или Steam Support."
+        ],
+        "report": "Укажи режим, регион, играешь один или в группе, точную ошибку и время."
+      },
+      "en": {
+        "title": "Matchmaking is stuck or will not queue",
+        "steps": [
+          "Check whether Deadlock shows an active match, a restriction or Low Priority. If Rejoin is available, try returning to the active match.",
+          "If there is no active match, cancel the queue if the button works, close the game and check Steam for updates. Then try queueing again.",
+          "If the game still says you are already in a match or queue, report the exact message through Bug Reports or Steam Support."
+        ],
+        "report": "Include the mode, region, solo or party, exact error and time."
+      }
+    },
+    {
+      "id": "game_download",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "не скачивается",
+        "не качается",
+        "не обновляется игра",
+        "зависло обновление",
+        "ошибка записи на диск",
+        "скачивание зависло",
+        "download stuck",
+        "disk write error",
+        "update stuck",
+        "update won't install",
+        "download not working",
+        "content file locked"
+      ],
+      "sources": [
+        "downloads",
+        "verify"
+      ],
+      "ru": {
+        "title": "Steam не скачивает или не обновляет",
+        "steps": [
+          "Проверь раздел «Загрузки» в Steam, свободное место на диске и точный текст ошибки. Возобнови загрузку после перезапуска клиента.",
+          "Если загрузка всё ещё зависает, открой настройки Steam → Загрузки → Очистить кэш загрузки. Steam может попросить войти заново.",
+          "Если ошибка повторяется, воспользуйся инструкцией Steam по загрузкам. Если игра уже установлена, отдельно проверь целостность файлов."
+        ],
+        "report": "Укажи текст ошибки из «Загрузок», ОС, свободное место и на каком этапе останавливается обновление."
+      },
+      "en": {
+        "title": "Steam download or update is stuck",
+        "steps": [
+          "Check Steam Downloads, free disk space and the exact error. Restart Steam and resume the download.",
+          "If the download is still stuck, open Steam Settings → Downloads → Clear Download Cache. Steam may ask you to sign in again.",
+          "If the error repeats, follow the Steam download troubleshooting guide. If the game is installed, verify its files separately."
+        ],
+        "report": "Include the error from Downloads, OS, free disk space and the stage where it stops."
+      }
+    },
+    {
+      "id": "game_audio",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "пропал звук",
+        "нет звука",
+        "исчезает звук",
+        "не слышно игру",
+        "звук пропадает",
+        "no sound",
+        "audio stops",
+        "no audio",
+        "audio disappears",
+        "sound disappears",
+        "game audio"
+      ],
+      "sources": [
+        "steam_tech",
+        "forum"
+      ],
+      "ru": {
+        "title": "Пропал звук в игре",
+        "steps": [
+          "Проверь громкость Deadlock в игре и в системном микшере. Убедись, что выбраны нужные наушники или динамики.",
+          "Если звук исчезает после смены устройства или сворачивания, выбери устройство заново и проверь в тренировке. Сравни звук в других приложениях.",
+          "Если проблема повторяется только в Deadlock, добавь в Bug Reports шаги и момент, в который исчезает звук."
+        ],
+        "report": "Укажи ОС, устройство вывода и исчезает ли весь звук, только голосовой чат или отдельные эффекты."
+      },
+      "en": {
+        "title": "Game audio disappears",
+        "steps": [
+          "Check Deadlock's volume in the game and system mixer. Make sure the intended headphones or speakers are selected.",
+          "If it happens after changing devices or switching windows, reselect the output and test in practice. Compare with other apps.",
+          "If only Deadlock is affected, post the steps and the point where sound disappears in Bug Reports."
+        ],
+        "report": "Include your OS, output device and whether all audio, voice chat or specific effects disappear."
+      }
+    },
+    {
+      "id": "game_bug",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "баг игры",
+        "баг героя",
+        "не работает способность",
+        "баг предмета",
+        "баг интерфейса игры",
+        "как сообщить о баге",
+        "bug report",
+        "report a bug",
+        "hero bug",
+        "ability bug",
+        "item bug",
+        "gameplay bug",
+        "shop hotkey"
+      ],
+      "sources": [
+        "forum",
+        "bug_guide"
+      ],
+      "ru": {
+        "title": "Баг героя, предмета или интерфейса",
+        "steps": [
+          "Проверь, повторяется ли баг в тренировке, и запиши действия по порядку. Укажи героя, предмет, способность или экран.",
+          "Если баг был в настоящем матче, добавь Match ID и время на таймере матча. Для запуска или интерфейса достаточно шага, на котором видна ошибка.",
+          "Раздел Bug Reports публичный. Перед отправкой убери со скриншотов и из текста личные данные, коды и содержимое личных чатов."
+        ],
+        "report": "Опиши действия, ожидаемый результат, что вышло фактически, и есть ли связь с Companion."
+      },
+      "en": {
+        "title": "Hero, item or game UI bug",
+        "steps": [
+          "Check whether it repeats in practice and write down the steps. Name the hero, item, ability or screen.",
+          "For a live match, include the match ID and in-game timestamp. For a launch or menu issue, give the step that shows the error.",
+          "Bug Reports posts are public. Remove personal information, codes and private chat content before posting."
+        ],
+        "report": "Include steps, expected and actual results, and whether Companion is involved."
+      }
+    },
+    {
+      "id": "penalty_abandon",
+      "group": "valve",
+      "category": "ban",
+      "aliases": [
+        "бан",
+        "забанили",
+        "забанен",
+        "разбаньте",
+        "разбан",
+        "снять бан",
+        "штраф после выхода",
+        "вышел из матча",
+        "вышел из игры",
+        "тиммейт вышел",
+        "отошёл афк",
+        "афк",
+        "afk",
+        "unban",
+        "banned",
+        "matchmaking ban",
+        "matchmaking restriction",
+        "abandon penalty",
+        "left the match",
+        "teammate left",
+        "temporary ban"
+      ],
+      "sources": [
+        "steam_game",
+        "bug_guide"
+      ],
+      "ru": {
+        "title": "Штраф после выхода или AFK",
+        "steps": [
+          "Посмотри точный тип ограничения и таймер в Deadlock. Если матч ещё идёт и доступна кнопка возврата, попробуй вернуться.",
+          "Если другой игрок вышел, ориентируйся на предупреждение перед выходом, которое показывает сама игра. Возврат в матч не гарантирует отмену уже назначенного штрафа.",
+          "Блокировки назначает Valve. Войди в Steam, чтобы увидеть доступные варианты поддержки. Если причина в повторяемом баге с вылетом или возвратом, опиши баг на форуме с Match ID и временем."
+        ],
+        "report": "Укажи точное сообщение и время окончания, Match ID и что произошло при выходе или возврате."
+      },
+      "en": {
+        "title": "Penalty after leaving or going AFK",
+        "steps": [
+          "Check the exact restriction and timer shown in Deadlock. If the match is still running and Rejoin is available, try to return.",
+          "If another player left, follow the warning Deadlock displays before you leave. Returning to the match does not guarantee that an existing penalty is removed.",
+          "Valve handles game restrictions. Sign in to Steam to see available support options. If a repeatable crash or reconnect bug was involved, report the bug with the match ID and time."
+        ],
+        "report": "Include the exact notice and expiry time, match ID, and what happened when leaving or rejoining."
+      }
+    },
+    {
+      "id": "penalty_low",
+      "group": "valve",
+      "category": "ban",
+      "aliases": [
+        "low priority",
+        "лоу приорити",
+        "низкий приоритет",
+        "сколько игр в лп",
+        "очередь лп",
+        "матчи лп",
+        "приоритет низкий",
+        "low prio",
+        "lp games",
+        "low priority queue",
+        "lp queue"
+      ],
+      "sources": [
+        "steam_game",
+        "forum"
+      ],
+      "ru": {
+        "title": "Low Priority и оставшиеся матчи",
+        "steps": [
+          "Найди уведомление о Low Priority в Deadlock и прочитай, какие матчи игра просит завершить и сколько осталось.",
+          "Если игра предлагает соответствующую очередь, заверши матч и сравни счётчик после результата. Временное ограничение на поиск может отображаться отдельно.",
+          "Если счётчик не меняется после матча, который соответствует требованию на экране, сообщи о проблеме Valve с Match ID и скриншотом счётчика."
+        ],
+        "report": "Укажи, что показывает игра, режим, Match ID и счётчик до и после матча."
+      },
+      "en": {
+        "title": "Low Priority and matches remaining",
+        "steps": [
+          "Read the Low Priority notice in Deadlock for the match requirement and the remaining count.",
+          "If the game offers the corresponding queue, finish a match and compare the counter after the result. A temporary matchmaking restriction may be listed separately.",
+          "If a match meeting the displayed requirement did not change the count, report it to Valve with the match ID and a screenshot of the counter."
+        ],
+        "report": "Include the displayed requirement, mode, match ID and counter before and after the match."
+      }
+    },
+    {
+      "id": "penalty_comm",
+      "group": "valve",
+      "category": "ban",
+      "aliases": [
+        "бан чата",
+        "бан войса",
+        "забанили чат",
+        "мут",
+        "отключили чат",
+        "не могу писать в чат",
+        "voice ban",
+        "chat ban",
+        "voice chat ban",
+        "communication restriction",
+        "chat restricted",
+        "muted account"
+      ],
+      "sources": [
+        "steam_game",
+        "forum"
+      ],
+      "ru": {
+        "title": "Ограничение чата или голоса",
+        "steps": [
+          "Проверь, показывает ли Deadlock предупреждение об ограничении чата, голоса или других действий, и записан ли срок.",
+          "Если предупреждения нет, проверь настройки голоса и клавишу разговора. Если ограничение указано в игре, варианты по аккаунту ищи в Steam Support.",
+          "Если состояние в игре явно расходится с предупреждением, опиши это в Bug Reports и убери из скриншота содержимое чатов."
+        ],
+        "report": "Укажи, что именно недоступно, точный текст и срок предупреждения, если он указан."
+      },
+      "en": {
+        "title": "Text or voice chat restriction",
+        "steps": [
+          "Check whether Deadlock displays a restriction on text, voice or another action, and note any expiry time.",
+          "If there is no warning, check voice settings and your push-to-talk key. For a restriction shown in-game, use Steam Support for account options.",
+          "If the UI and restriction notice clearly disagree, describe the discrepancy in Bug Reports and redact chat contents in screenshots."
+        ],
+        "report": "Include what is disabled and the exact wording and duration of the warning, if shown."
+      }
+    },
+    {
+      "id": "penalty_account",
+      "group": "valve",
+      "category": "ban",
+      "aliases": [
+        "vac",
+        "вак бан",
+        "вак",
+        "vac ban",
+        "game ban",
+        "бан на аккаунте",
+        "бан аккаунта",
+        "блокировка аккаунта",
+        "steam account restriction",
+        "account banned"
+      ],
+      "sources": [
+        "steam_game",
+        "game_ban",
+        "vac"
+      ],
+      "ru": {
+        "title": "Game Ban или VAC в Steam",
+        "steps": [
+          "Посмотри в Steam, какой именно тип блокировки отображается. Надписи Game Ban и VAC Ban ведут к разным справкам.",
+          "Если речь только о таймере подбора внутри Deadlock, воспользуйся подсказкой про штраф после выхода. Если ограничение есть в Steam, используй официальную справку для этого типа.",
+          "Команда Deadlock Contracts не управляет игровыми блокировками. Информацию об ограничении проверяй в Steam под нужным аккаунтом."
+        ],
+        "report": "Укажи только тип ограничения и где оно видно. Логин Steam и данные для входа не нужны."
+      },
+      "en": {
+        "title": "Steam Game Ban or VAC ban",
+        "steps": [
+          "Check the exact restriction shown by Steam. Game Ban and VAC Ban have separate help pages.",
+          "If you only see a Deadlock matchmaking timer, use the leaving or AFK penalty guide. For a restriction shown in Steam, open the official help page for that type.",
+          "Deadlock Contracts cannot manage game restrictions. Check the details through the correct Steam account."
+        ],
+        "report": "Include only the restriction type and where it appears. Keep account credentials private."
+      }
+    },
+    {
+      "id": "match_balance",
+      "group": "valve",
+      "category": "other",
+      "aliases": [
+        "плохой подбор",
+        "нечестный подбор",
+        "кривой подбор",
+        "дисбаланс команд",
+        "неравные команды",
+        "плохой матчмейкинг",
+        "стомп",
+        "bad matchmaking",
+        "unbalanced match",
+        "unfair matchmaking",
+        "team composition",
+        "matchmaking balance",
+        "stomp"
+      ],
+      "sources": [
+        "matchmaking"
+      ],
+      "ru": {
+        "title": "Неравный подбор или состав команды",
+        "steps": [
+          "Найди Match ID в истории или деталях матча.",
+          "Опиши, что именно было неравным. Например, разница в опыте игроков, составы команд или ход матча. Приведи конкретный момент.",
+          "Опубликуй Match ID и описание в закреплённой теме Bad Matchmaking на форуме Deadlock."
+        ],
+        "report": "Укажи режим, Match ID и наблюдение. Уровень Deadlock Contracts в подборе Valve не используется."
+      },
+      "en": {
+        "title": "Unbalanced matchmaking or team composition",
+        "steps": [
+          "Find the match ID in your match history or match details.",
+          "Describe the imbalance, such as player experience, team composition or how the match played out. Give a specific example.",
+          "Post the match ID and description in the pinned Bad Matchmaking thread on the Deadlock forum."
+        ],
+        "report": "Include the mode, match ID and what you noticed. Valve matchmaking is separate from your Deadlock Contracts level."
+      }
+    },
+    {
+      "id": "game_rank",
+      "group": "valve",
+      "category": "other",
+      "aliases": [
+        "ранг не меняется",
+        "не обновляется ранг",
+        "застрял ранг",
+        "не дали рейтинговые очки",
+        "рейтинг в игре",
+        "ранг в deadlock",
+        "ranked points",
+        "rank not updating",
+        "stuck rank",
+        "rank badge",
+        "rank did not change"
+      ],
+      "sources": [
+        "steam_game",
+        "bug_guide"
+      ],
+      "ru": {
+        "title": "Ранг в Deadlock не обновляется",
+        "steps": [
+          "Сверь режим и результат в истории самой игры. Уровень и XP на сайте Deadlock Contracts относятся к прогрессу проекта.",
+          "Если экран ранга остаётся явно некорректным после нескольких подходящих матчей, запиши их Match ID, время и сделай скриншот ранга.",
+          "Передай сведения Valve через Steam или Bug Reports. Изменение ранга после конкретного матча зависит от правил игры."
+        ],
+        "report": "Укажи режим, Match ID и где именно в игре ранг выглядит неверно."
+      },
+      "en": {
+        "title": "Deadlock rank is not updating",
+        "steps": [
+          "Check the mode and result in the game's match history. Deadlock Contracts XP and level track progress on the website.",
+          "If the rank display still looks wrong after multiple eligible matches, collect their match IDs, times and a screenshot.",
+          "Send the details to Valve through Steam Support or Bug Reports. A visible rank change after a specific match depends on the game's rules."
+        ],
+        "report": "Include the mode, match IDs and where the rank is displayed incorrectly."
+      }
+    },
+    {
+      "id": "game_report",
+      "group": "valve",
+      "category": "other",
+      "aliases": [
+        "читер",
+        "читеры",
+        "репорт игрока",
+        "пожаловаться на игрока",
+        "токсик",
+        "грифер",
+        "тимкилл",
+        "cheater",
+        "cheating",
+        "report player",
+        "report a player",
+        "griefing",
+        "toxic player"
+      ],
+      "sources": [
+        "steam_game"
+      ],
+      "ru": {
+        "title": "Как пожаловаться на игрока",
+        "steps": [
+          "Используй доступную в Deadlock функцию Report для конкретного игрока и выбери причину, которая соответствует нарушению.",
+          "Если сама отправка жалобы выдаёт ошибку, запиши Match ID, время и текст ошибки. По проблеме с инструментом жалоб можно обратиться в Steam Support.",
+          "Для обращения по поведению игрока пользуйся каналом Valve внутри игры или Steam."
+        ],
+        "report": "Если обращение про сбой кнопки Report, укажи экран и точную ошибку без личной переписки."
+      },
+      "en": {
+        "title": "How to report a player",
+        "steps": [
+          "Use Deadlock's in-game Report feature for the specific player and choose the reason that matches the behavior.",
+          "If submitting the report itself fails, note the match ID, time and error. Use Steam Support for trouble with the reporting tool.",
+          "For a player behavior report, use Valve's in-game or Steam channels."
+        ],
+        "report": "If the Report button fails, include the screen and exact error without private chat content."
+      }
+    },
+    {
+      "id": "game_access",
+      "group": "valve",
+      "category": "other",
+      "aliases": [
+        "инвайт",
+        "приглашение",
+        "нет доступа к игре",
+        "получить доступ",
+        "как скачать deadlock",
+        "игры нет в библиотеке",
+        "плейтест",
+        "invite",
+        "playtest access",
+        "not in my library",
+        "get access to deadlock",
+        "where to download deadlock"
+      ],
+      "sources": [
+        "store",
+        "steam_game"
+      ],
+      "ru": {
+        "title": "Доступ к игре и приглашения",
+        "steps": [
+          "Проверь актуальные условия доступа на странице Deadlock в Steam. Пока доступ выдаётся по приглашениям, их отправляют участники теста.",
+          "Если приглашение уже было, открой Steam под аккаунтом, которому его отправили, и проверь уведомления и библиотеку.",
+          "Если доступ выдан, но игра отсутствует, войди в Steam Support под этим аккаунтом и выбери Deadlock."
+        ],
+        "report": "Укажи, видишь ли приглашение или уже выданный доступ. Пароль и код Steam Guard присылать не нужно."
+      },
+      "en": {
+        "title": "Game access and playtest invites",
+        "steps": [
+          "Check the Deadlock store page for current access rules. While access is invite-only, invitations come from existing playtesters.",
+          "If you received an invitation, open Steam with the account it was sent to and check notifications and the Library.",
+          "If access was granted but the game is missing, sign in to Steam Support with that account and select Deadlock."
+        ],
+        "report": "Say whether you can see the invitation or already have access. Keep your password and Steam Guard code private."
+      }
+    },
+    {
+      "id": "contract_start",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "как работают контракты",
+        "как начать",
+        "как взять контракт",
+        "где брать контракты",
+        "что такое deadlock contracts",
+        "это мод",
+        "how to start",
+        "how to sign contracts",
+        "how do contracts work",
+        "how to get a contract",
+        "is this a mod"
+      ],
+      "sources": [
+        "guide",
+        "site"
+      ],
+      "ru": {
+        "title": "Как взять первый контракт",
+        "steps": [
+          "Войди через Steam на сайте Deadlock Contracts. Открой доску для режима, в который собираешься играть.",
+          "Выбери до трёх заданий, прочитай условия и подпиши свиток до начала матча. Дождись, пока сайт подтвердит подписание.",
+          "Сыграй в выбранном режиме и открой результат в кабинете. Сайт покажет состояние проверки и подтверждённый XP."
+        ],
+        "report": "Напиши, на каком шаге остановился: вход, выбор режима, подписание или проверка."
+      },
+      "en": {
+        "title": "How to take your first contract",
+        "steps": [
+          "Sign in through Steam on Deadlock Contracts and open the board for the mode you plan to play.",
+          "Pick up to three tasks, check their conditions and sign the scroll before the match starts. Wait for the site to confirm it.",
+          "Play that mode and open the result in your dashboard. The site shows verification status and confirmed XP."
+        ],
+        "report": "Tell us where you got stuck: sign-in, mode selection, signing or verification."
+      }
+    },
+    {
+      "id": "contract_count",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "не засчитался контракт",
+        "контракт не засчитался",
+        "не засчитало контракт",
+        "не засчитали задание",
+        "контракт не выполнен",
+        "не посчитало",
+        "не засчитался",
+        "контракт не зачли",
+        "contract did not count",
+        "contract didn't count",
+        "contract not counted",
+        "task not completed",
+        "objective not counted",
+        "contract not credited",
+        "contract failed"
+      ],
+      "sources": [
+        "guide",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Контракт не засчитался",
+        "steps": [
+          "Открой дело в истории. Сверь Match ID, выбранный режим и время подписания с началом матча.",
+          "Сравни итоговую статистику с точным условием выбранного задания. При статусе «Получаем данные» или «Уточняем данные» дождись итоговой проверки.",
+          "Если сервер уже показал результат, который расходится с условием и статистикой, отправь обращение с названием задания и Match ID."
+        ],
+        "report": "Укажи название задания, режим, Match ID и фактическое значение показателя из итогов матча."
+      },
+      "en": {
+        "title": "Contract did not count",
+        "steps": [
+          "Open the case in history and compare the match ID, selected mode and signing time with the match start.",
+          "Compare the final stats against the exact objective. If the case still shows fetching or verification, wait for the final result.",
+          "If the server has finalized a result that conflicts with the objective and stats, send the objective name and match ID to support."
+        ],
+        "report": "Include the objective name, mode, match ID and the actual stat shown in the match results."
+      }
+    },
+    {
+      "id": "contract_wait",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "получаем данные",
+        "уточняем данные",
+        "нет данных",
+        "долго проверяет",
+        "долго проверяется матч",
+        "зависла проверка",
+        "проверка матча",
+        "ожидает данные",
+        "fetching data",
+        "no data",
+        "verifying match",
+        "pending verification",
+        "waiting for data",
+        "verification stuck",
+        "review pending"
+      ],
+      "sources": [
+        "site_status",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Долго проверяется матч или нет данных",
+        "steps": [
+          "Проверь статус сервиса и открой дело в истории. «Получаем данные» и «Уточняем данные» означают, что проверка ещё идёт.",
+          "Сверь привязанный Match ID и доступность итоговой статистики. «Нет данных» означает, что для решения не хватило подтверждения.",
+          "Если проблема сохраняется, отправь статус, Match ID, время окончания и режим. Команда сможет найти конкретное дело."
+        ],
+        "report": "Укажи состояние доски, Match ID, режим и время завершения матча с часовым поясом."
+      },
+      "en": {
+        "title": "Match verification is pending or has no data",
+        "steps": [
+          "Check the service status and open the case in history. Fetching data and Verifying data mean the review is still in progress.",
+          "Check the linked match ID and availability of final stats. No data means there was insufficient evidence for a verdict.",
+          "If it persists, send the case status, match ID, end time and mode so support can identify the case."
+        ],
+        "report": "Include the board state, match ID, mode and end time with your time zone."
+      }
+    },
+    {
+      "id": "contract_match",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "привязался не тот матч",
+        "не привязался матч",
+        "матч не появился",
+        "не вижу матч в истории",
+        "выбран не тот матч",
+        "не тот match id",
+        "матч не найден",
+        "wrong match linked",
+        "wrong match id",
+        "match not found",
+        "match not showing",
+        "match not linked"
+      ],
+      "sources": [
+        "guide",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Матч отсутствует или привязан другой",
+        "steps": [
+          "Сверь Steam-аккаунт, время подписания и режим. Система ищет подходящий матч после фиксации выбора.",
+          "Сравни Match ID в кабинете с деталями матча в Deadlock. Если карточка ещё в ожидании, проверь статус сервиса.",
+          "Для проверки отправь ожидаемый Match ID и номер, который показывает сайт, если они отличаются."
+        ],
+        "report": "Укажи оба Match ID, время начала матча, режим и время подписания."
+      },
+      "en": {
+        "title": "Match missing or wrong match linked",
+        "steps": [
+          "Check the Steam account, signing time and mode. The site looks for a qualifying match after the case is locked.",
+          "Compare the dashboard's match ID with the match details in Deadlock. If the case is still waiting, check the service status.",
+          "If the IDs differ, send the expected match ID and the one shown on the site."
+        ],
+        "report": "Include both IDs, match start time, mode and signing time."
+      }
+    },
+    {
+      "id": "contract_xp",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "не пришёл xp",
+        "нет xp",
+        "не дали xp",
+        "не начислили xp",
+        "не начислился опыт",
+        "пропал опыт",
+        "уровень не обновился",
+        "не дали опыт",
+        "xp не пришел",
+        "missing xp",
+        "no xp",
+        "xp not awarded",
+        "xp not credited",
+        "xp missing",
+        "level did not update",
+        "experience not credited"
+      ],
+      "sources": [
+        "guide",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Не начислили XP или не обновился уровень",
+        "steps": [
+          "Открой итог дела и проверь, есть ли подтверждённый XP. Награда в описании задания показывает возможный результат.",
+          "Обнови кабинет после завершения проверки и сравни итог дела с прогрессом профиля. Уровень сайта и ранг в Deadlock отображаются отдельно.",
+          "Если итог уже показывает начисление, но прогресс профиля отличается, пришли данные именно этого дела."
+        ],
+        "report": "Укажи Match ID, название задания, подтверждённый XP из итога и значение в профиле."
+      },
+      "en": {
+        "title": "XP missing or website level did not update",
+        "steps": [
+          "Open the case result and check its confirmed XP. The reward in the objective description is the amount you can earn.",
+          "Refresh the dashboard after verification and compare the case result with your profile progress. The website level is separate from the Deadlock rank.",
+          "If the result already shows an award but your profile differs, send details for that specific case."
+        ],
+        "report": "Include the match ID, objective, confirmed XP from the result and the amount shown in your profile."
+      }
+    },
+    {
+      "id": "contract_sign",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "не подписывается",
+        "не могу подписать",
+        "ошибка подписи",
+        "свиток не подписывается",
+        "пропала подпись",
+        "кнопка подписания",
+        "не получается подписать",
+        "cannot sign",
+        "can't sign",
+        "scroll won't sign",
+        "signature error",
+        "signing failed",
+        "stuck signing"
+      ],
+      "sources": [
+        "guide",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Свиток не подписывается",
+        "steps": [
+          "Проверь вход через Steam, выбранный режим и задания на актуальной доске.",
+          "Если сайт сообщает об устаревшей доске или выбранных заданиях, обнови страницу, открой текущую доску и выбери их заново.",
+          "Если подтверждение зависло, сначала проверь состояние дела в кабинете. Повторяй действие только после того, как убедишься, что подпись не зафиксирована."
+        ],
+        "report": "Укажи экран, режим, точный текст ошибки и успела ли появиться печать."
+      },
+      "en": {
+        "title": "Scroll signing fails",
+        "steps": [
+          "Check that you are signed in through Steam and have selected a mode and tasks from the current board.",
+          "If the site says the board or selection is stale, reload, open the current board and make your selection again.",
+          "If confirmation hangs, check the case in your dashboard first. Retry once you have confirmed the selection was not locked."
+        ],
+        "report": "Include the screen, mode, exact error and whether the seal appeared."
+      }
+    },
+    {
+      "id": "contract_modes",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "какие режимы",
+        "режим контракта",
+        "другой режим",
+        "режим не подходит",
+        "street brawl контракт",
+        "ранкед контракт",
+        "контракт стандарт",
+        "supported modes",
+        "wrong mode",
+        "contract mode",
+        "ranked contract",
+        "street brawl contract",
+        "standard mode contract"
+      ],
+      "sources": [
+        "guide"
+      ],
+      "ru": {
+        "title": "Какой режим засчитывается",
+        "steps": [
+          "Смотри режим на самой доске и в подписанном деле. Задания выбираются для указанного режима.",
+          "Подпиши до матча и сыграй тот режим, который указан в деле. Проверь ограничения конкретного задания в его описании.",
+          "Если на экране подписан один режим, а в истории указан другой, отправь оба названия и Match ID."
+        ],
+        "report": "Укажи режим на доске, режим из итогов игры и Match ID."
+      },
+      "en": {
+        "title": "Which mode counts for the contract",
+        "steps": [
+          "Check the mode shown on the board and the signed case. Objectives are selected for that mode.",
+          "Sign before the match and play the mode stated in the case. Read any restrictions in the specific objective description.",
+          "If the signed case and match history show different modes, send both labels and the match ID."
+        ],
+        "report": "Include the board mode, the mode from the game result and the match ID."
+      }
+    },
+    {
+      "id": "contract_demo",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "демо контракт",
+        "демо доска",
+        "подписал демо",
+        "демонстрация контракта",
+        "пробное подписание",
+        "demo board",
+        "signing preview",
+        "demo contract",
+        "trial contract"
+      ],
+      "sources": [
+        "guide",
+        "site"
+      ],
+      "ru": {
+        "title": "Подписал демо, но дело не появилось",
+        "steps": [
+          "Демонстрация показывает выбор заданий и анимацию подписи. Для настоящего дела нужен вход через Steam.",
+          "После входа открой рабочую доску режима, выбери задания и подпиши до матча.",
+          "Проверь, что подписанное дело появилось в личном кабинете."
+        ],
+        "report": "Укажи адрес страницы, на которой подписывал свиток, и видишь ли дело после входа."
+      },
+      "en": {
+        "title": "Signed the demo but no case appeared",
+        "steps": [
+          "The demo shows selection and signing animation. A real case requires a Steam sign-in.",
+          "After signing in, open the live mode board, pick tasks and sign before the match.",
+          "Check that the signed case appears in your dashboard."
+        ],
+        "report": "Include the page where you signed and whether the case appears after sign-in."
+      }
+    },
+    {
+      "id": "companion_install",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "как установить компаньон",
+        "скачать компаньон",
+        "не устанавливается компаньон",
+        "не устанавливается overwolf",
+        "обновить компаньон",
+        "версия компаньона",
+        "companion install",
+        "install companion",
+        "companion download",
+        "companion update",
+        "update required",
+        "overwolf installation",
+        "companion on linux",
+        "steam deck companion"
+      ],
+      "sources": [
+        "site_support",
+        "overwolf",
+        "ow_version"
+      ],
+      "ru": {
+        "title": "Установка или обновление Companion",
+        "steps": [
+          "Проверь, что Overwolf работает на поддерживаемой Windows. Для установки используй ссылку, которую предлагает сам проект или официальный Overwolf.",
+          "Если Companion уже установлен, сравни его версию с требуемой на экране. Обнови Overwolf и Companion через доступный официальный канал.",
+          "Полностью перезапусти Overwolf и Companion. Если нужная версия не предлагается, пришли текущую версию и текст сообщения."
+        ],
+        "report": "Укажи версию Windows, Overwolf, Companion и источник установки."
+      },
+      "en": {
+        "title": "Install or update Companion",
+        "steps": [
+          "Check that Overwolf is running on a supported Windows version. Use the installation link offered by the project or official Overwolf.",
+          "If Companion is installed, compare its version with the requirement on screen. Update Overwolf and Companion through the supported distribution channel.",
+          "Fully restart Overwolf and Companion. If the required version is unavailable, send your current version and the message shown."
+        ],
+        "report": "Include Windows, Overwolf and Companion versions and where you got the installer."
+      }
+    },
+    {
+      "id": "companion_pair",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "код привязки",
+        "код не работает",
+        "истёк код",
+        "код просрочен",
+        "не привязывается компаньон",
+        "не могу привязать",
+        "ошибка привязки",
+        "pairing code",
+        "pairing code expired",
+        "invalid pairing code",
+        "pairing expired",
+        "cannot pair",
+        "can't pair",
+        "code expired"
+      ],
+      "sources": [
+        "site",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Код привязки истёк или не подходит",
+        "steps": [
+          "Войди на сайт через тот Steam-аккаунт, которым играешь. Открой настройки Companion в кабинете и создай новый код.",
+          "Введи свежий код в окно привязки Companion. Если Companion сообщает, что код уже использован или истёк, создай ещё один.",
+          "Проверь связанный аккаунт и статус в кабинете. Для обращения достаточно текста ошибки без самого кода."
+        ],
+        "report": "Укажи сообщение при вводе кода и версии сайта и Companion. Сам код не присылай."
+      },
+      "en": {
+        "title": "Pairing code expired or does not work",
+        "steps": [
+          "Sign in on the site with the Steam account you play on. Open Companion settings in your dashboard and generate a new code.",
+          "Enter the new code in Companion. If it says the code was used or expired, create another one.",
+          "Check the linked account and status in your dashboard. The error message is enough for support."
+        ],
+        "report": "Include the error and both versions. Keep the pairing code private."
+      }
+    },
+    {
+      "id": "companion_rebind",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "другой аккаунт компаньон",
+        "не тот аккаунт компаньон",
+        "перепривязать компаньон",
+        "отвязать устройство",
+        "сменить аккаунт companion",
+        "привязан к другому",
+        "rebind companion",
+        "wrong account companion",
+        "unlink companion",
+        "revoke device",
+        "change companion account"
+      ],
+      "sources": [
+        "site",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Companion привязан к другому аккаунту",
+        "steps": [
+          "Проверь Steam-аккаунт на сайте и профиль, который показывает Companion.",
+          "В кабинете выбери нужное устройство и отзови старую привязку, если ты больше не используешь её. Затем создай новый код под нужным аккаунтом.",
+          "Открой Companion, войди заново через привязку и проверь имя и статус профиля."
+        ],
+        "report": "Укажи, совпадают ли отображаемые профили и на каком шаге перепривязки возникает ошибка."
+      },
+      "en": {
+        "title": "Companion is paired to the wrong account",
+        "steps": [
+          "Compare the Steam account on the site with the profile shown in Companion.",
+          "In your dashboard, select the device and revoke the old pairing if you no longer use it. Create a new code under the correct account.",
+          "Open Companion, pair again and check the profile name and connection status."
+        ],
+        "report": "Say whether the displayed profiles match and at which step pairing fails."
+      }
+    },
+    {
+      "id": "companion_offline",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "компаньон офлайн",
+        "компаньон не в сети",
+        "companion офлайн",
+        "companion offline",
+        "paired offline",
+        "companion not connected",
+        "нет связи с компаньоном",
+        "компаньон не подключается",
+        "компаньон не видит сайт"
+      ],
+      "sources": [
+        "site_status",
+        "ow_version"
+      ],
+      "ru": {
+        "title": "Companion показывает «Не в сети»",
+        "steps": [
+          "Проверь статус сервиса и открой сайт в обычном браузере. В кабинете посмотри статус устройства и время последнего подключения.",
+          "Проверь, что Overwolf и Companion запущены, а привязка относится к текущему Steam-аккаунту. Полностью перезапусти Companion.",
+          "Если статус не изменился, пришли сообщение из окна диагностики и версии. При ожидании отправки матча сначала дождись восстановления связи."
+        ],
+        "report": "Укажи версии сайта, Overwolf и Companion, статус устройства и время последнего подключения."
+      },
+      "en": {
+        "title": "Companion shows Offline",
+        "steps": [
+          "Check service status and open the site in a regular browser. Check the device status and last connection time in your dashboard.",
+          "Check that Overwolf and Companion are running and paired to the current Steam account. Fully restart Companion.",
+          "If it stays offline, send the diagnostic message and versions. For a queued match, wait for the connection to recover."
+        ],
+        "report": "Include the site, Overwolf and Companion versions, device status and last connection time."
+      }
+    },
+    {
+      "id": "companion_overlay",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "оверлей не работает",
+        "нет оверлея",
+        "не открывается оверлей",
+        "не работает хоткей",
+        "не работает ctrl shift c",
+        "overlay not working",
+        "overlay not showing",
+        "overwolf overlay",
+        "hotkey not working",
+        "ctrl shift c"
+      ],
+      "sources": [
+        "ow_overlay"
+      ],
+      "ru": {
+        "title": "Оверлей не открывается или не работает клавиша",
+        "steps": [
+          "В настройках Overwolf открой Overlay & Hotkeys и проверь, включён ли оверлей для Deadlock.",
+          "В Companion по умолчанию используется Ctrl+Shift+C. Проверь назначение в Overwolf и попробуй другую свободную комбинацию, если есть конфликт.",
+          "Проверь в тренировке после перезапуска Overwolf и игры. Если окно Companion открывается на рабочем столе, но не в игре, укажи режим отображения игры."
+        ],
+        "report": "Укажи комбинацию, режим экрана и версии Overwolf и Companion."
+      },
+      "en": {
+        "title": "Overlay or hotkey does not work",
+        "steps": [
+          "In Overwolf Settings → Overlay & Hotkeys, check that the overlay is enabled for Deadlock.",
+          "Companion defaults to Ctrl+Shift+C. Check the assignment in Overwolf and try an unused combination if there is a conflict.",
+          "Restart Overwolf and the game, then test in practice. If the desktop window works but the in-game window does not, include your display mode."
+        ],
+        "report": "Include the hotkey, display mode and the Overwolf and Companion versions."
+      }
+    },
+    {
+      "id": "companion_events",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "gep",
+        "события не приходят",
+        "компаньон не видит матч",
+        "после патча компаньон",
+        "события overwolf",
+        "game events down",
+        "gep not working",
+        "no game events",
+        "companion not detecting match",
+        "events after patch",
+        "not tracking game"
+      ],
+      "sources": [
+        "ow_events",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Companion не получает игровые события",
+        "steps": [
+          "Сверь состояние игровых событий Overwolf и статус проекта. После обновления игры отдельные события могут временно не приходить.",
+          "Обнови и перезапусти Overwolf, Companion и игру. Убедись, что ты в режиме, который отслеживает выбранное дело.",
+          "Открой историю на сайте после матча. Сигналы Companion предварительные. Итог проверяет сервер по доступным данным."
+        ],
+        "report": "Укажи режим, версию игры и Companion, Match ID и какие события отсутствуют."
+      },
+      "en": {
+        "title": "Companion is missing game events",
+        "steps": [
+          "Check Overwolf game event status and the project status. A game update can temporarily interrupt individual events.",
+          "Update and restart Overwolf, Companion and Deadlock. Check that the mode matches your signed case.",
+          "After the match, check website history. Companion signals are provisional. The server verifies the final result with available data."
+        ],
+        "report": "Include the mode, game and Companion versions, match ID and the missing events."
+      }
+    },
+    {
+      "id": "companion_upload",
+      "group": "companion",
+      "category": "companion",
+      "aliases": [
+        "матч в очереди",
+        "не отправился матч",
+        "компаньон не отправил матч",
+        "в очереди отправки",
+        "отложенная отправка",
+        "queued match",
+        "match queued",
+        "upload pending",
+        "waiting to send",
+        "companion match upload",
+        "result not sent"
+      ],
+      "sources": [
+        "site_status",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Результат матча в очереди отправки",
+        "steps": [
+          "Проверь связь и оставь Companion запущенным, пока он повторяет отправку. Обнови кабинет, когда появится подключение.",
+          "Сверь статус дела и Match ID в истории сайта. Успешная отправка данных и итоговая проверка матча отображаются отдельно.",
+          "Если очередь сохраняется при рабочем соединении, пришли статус очереди и версии. Сохрани доступные данные до переустановки."
+        ],
+        "report": "Укажи Match ID, время конца матча, сколько результатов ожидают отправки и текст ошибки, если он есть."
+      },
+      "en": {
+        "title": "Match result is queued for delivery",
+        "steps": [
+          "Check your connection and keep Companion running while it retries. Refresh your dashboard once connectivity returns.",
+          "Compare the case status and match ID in website history. Delivery and final verification are separate stages.",
+          "If the queue persists while connected, send its status and versions. Keep available evidence before reinstalling."
+        ],
+        "report": "Include the match ID, end time, number of queued results and any error text."
+      }
+    },
+    {
+      "id": "contract_match_id",
+      "group": "contracts",
+      "category": "contracts",
+      "aliases": [
+        "где match id",
+        "как найти match id",
+        "где найти id матча",
+        "как узнать айди матча",
+        "номер матча где",
+        "где id матча",
+        "match id",
+        "where to find match id",
+        "how to find match id",
+        "where is the match id"
+      ],
+      "sources": [
+        "bug_guide",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Где найти Match ID",
+        "steps": [
+          "Открой историю и детали матча в Deadlock. В инструкции Valve показано, где искать Match ID в разделе Watch.",
+          "Если проверяешь контракт, открой дело в истории Deadlock Contracts и сравни номер в нём с номером нужного матча.",
+          "Если Match ID ещё не появился, пришли время начала и окончания с часовым поясом и режим. Этого достаточно для первого обращения."
+        ],
+        "report": "Укажи режим, время с часовым поясом и место, где искал Match ID."
+      },
+      "en": {
+        "title": "Where to find the match ID",
+        "steps": [
+          "Open the match history and details in Deadlock. Valve's bug-report guide explains where to find the match ID in Watch.",
+          "For a contract, open the case in Deadlock Contracts history and compare its ID with the match you are reporting.",
+          "If the ID is not available yet, include the mode, start and end time with your time zone when contacting support."
+        ],
+        "report": "Include the mode, time zone and the screen where you looked for the match ID."
+      }
+    },
+    {
+      "id": "site_steam",
+      "group": "site",
+      "category": "contracts",
+      "aliases": [
+        "не могу войти на сайт",
+        "ошибка входа steam",
+        "вход через steam",
+        "steam openid",
+        "бесконечный вход",
+        "зациклился вход",
+        "не перенаправляет steam",
+        "steam login loop",
+        "steam login",
+        "cannot sign in",
+        "sign in through steam",
+        "openid error",
+        "can't log in to website"
+      ],
+      "sources": [
+        "site",
+        "steam_login",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Сайт не пускает через Steam",
+        "steps": [
+          "Открой Deadlock Contracts в обычном браузере. Запусти «Войти через Steam» с сайта, проверь домен страницы Steam и выбери нужный аккаунт.",
+          "Если после подтверждения снова показывается вход, проверь, что браузер принимает cookies для сайта, и повтори вход в обычной вкладке.",
+          "Если не удаётся войти в сам Steam, используй Steam Support. Если Steam работает, а возврат на сайт выдаёт ошибку, пришли её текст и время."
+        ],
+        "report": "Укажи браузер, устройство и шаг, на котором остановился вход. Пароли, Steam Guard и cookies не присылай."
+      },
+      "en": {
+        "title": "Steam sign-in to the website fails",
+        "steps": [
+          "Open Deadlock Contracts in a regular browser. Start Sign in through Steam from the site, verify the Steam page's domain and select the correct account.",
+          "If sign-in loops after confirmation, check that cookies are allowed for the site and retry in a regular tab.",
+          "For trouble signing in to Steam itself, use Steam Support. If Steam works but the return to the site fails, send the error text and time."
+        ],
+        "report": "Include browser, device and which sign-in step failed. Keep passwords, Steam Guard codes and cookies private."
+      }
+    },
+    {
+      "id": "site_down",
+      "group": "site",
+      "category": "contracts",
+      "aliases": [
+        "сайт не работает",
+        "сайт не открывается",
+        "ошибка 502",
+        "ошибка 503",
+        "сайт недоступен",
+        "пустой кабинет",
+        "белый экран сайта",
+        "website down",
+        "site unavailable",
+        "blank dashboard",
+        "site 502",
+        "site 503",
+        "webpage won't load",
+        "service unavailable"
+      ],
+      "sources": [
+        "site_status",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Сайт недоступен или пустой экран",
+        "steps": [
+          "Открой страницу статуса. Если она доступна, посмотри, какой компонент отмечен как недоступный.",
+          "Перезагрузи проблемную страницу и сравни её в другом браузере или сети, если это возможно. Запиши код ошибки и адрес страницы.",
+          "Если сбой сохраняется, отправь в поддержку время, адрес страницы и код. Если дело уже подписано, после восстановления проверь его состояние в кабинете."
+        ],
+        "report": "Укажи адрес страницы, HTTP-код или текст ошибки, браузер, устройство и время с часовым поясом."
+      },
+      "en": {
+        "title": "Website unavailable or blank screen",
+        "steps": [
+          "Open the status page. If it loads, see whether a specific component is listed as unavailable.",
+          "Reload the page and compare in another browser or network if possible. Record the error code and page address.",
+          "If it persists, send the time, page address and code to support. For an already signed case, check its state after service recovers."
+        ],
+        "report": "Include the page address, HTTP code or error, browser, device and time zone."
+      }
+    },
+    {
+      "id": "pack_daily",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "нет пака",
+        "пак недоступен",
+        "не дали пак",
+        "не получил пак",
+        "когда обновляется пак",
+        "ежедневный пак",
+        "бесплатный пак",
+        "пак не появился",
+        "daily pack missing",
+        "daily pack",
+        "free pack",
+        "pack unavailable",
+        "daily reset",
+        "pack reset"
+      ],
+      "sources": [
+        "cards",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Ежедневный пак недоступен",
+        "steps": [
+          "Войди под нужным Steam-аккаунтом и проверь коллекцию. Бесплатный пак доступен один раз за день.",
+          "Выдача обновляется в 00:00 UTC, то есть в 03:00 по Москве. Если текущий пак уже открывался, посмотри его результат в коллекции.",
+          "Если после обновления пак не появился и сегодня ты его не открывал, отправь время, часовой пояс и статус кнопки открытия."
+        ],
+        "report": "Укажи время, часовой пояс и что видно на кнопке или экране пака."
+      },
+      "en": {
+        "title": "Daily pack is unavailable",
+        "steps": [
+          "Sign in with the correct Steam account and check the collection. One free pack is available per day.",
+          "The daily reset is 00:00 UTC, or 03:00 Moscow time. If today's pack was already opened, check its result in the collection.",
+          "If it remains unavailable after reset and you have not opened it today, send the time, time zone and the button's status."
+        ],
+        "report": "Include the time, time zone and what the pack button or screen shows."
+      }
+    },
+    {
+      "id": "pack_replay",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "пак завис",
+        "анимация пака зависла",
+        "закрыл пак",
+        "пак открылся без анимации",
+        "пак прервался",
+        "повторить открытие пака",
+        "pack stuck",
+        "pack animation froze",
+        "closed pack animation",
+        "pack opening interrupted",
+        "replay pack"
+      ],
+      "sources": [
+        "cards",
+        "site_status"
+      ],
+      "ru": {
+        "title": "Открытие пака зависло или прервалось",
+        "steps": [
+          "Обнови коллекцию под тем же аккаунтом. Сервер сохраняет результат открытия до воспроизведения анимации.",
+          "Проверь, появились ли карточки. Повторный запрос того же пака показывает уже выданный результат.",
+          "Если пак помечен открытым, а карт нет в коллекции после обновления, отправь время и скриншот состояния."
+        ],
+        "report": "Укажи время открытия, состояние кнопки и изменилось ли число карт в коллекции."
+      },
+      "en": {
+        "title": "Pack opening froze or was interrupted",
+        "steps": [
+          "Reload the collection on the same account. The server saves the pack result before the animation plays.",
+          "Check for the cards. Reopening the same pack returns the result already issued.",
+          "If the pack is marked opened but the cards are missing after refresh, send the time and a screenshot."
+        ],
+        "report": "Include the opening time, button state and whether the collection count changed."
+      }
+    },
+    {
+      "id": "cards_missing",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "пропали карточки",
+        "пропала карта",
+        "не вижу карточку",
+        "нет карточек",
+        "коллекция пустая",
+        "карты не отображаются",
+        "cards missing",
+        "missing cards",
+        "empty collection",
+        "card not showing",
+        "collection filter"
+      ],
+      "sources": [
+        "cards",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Карточка пропала из коллекции",
+        "steps": [
+          "Проверь, под тем ли Steam-аккаунтом открыт кабинет. Сбрось фильтры коллекции и поиска и обнови страницу.",
+          "Если искал карту на витрине профиля, отдельно проверь полную коллекцию. На витрину выводятся выбранные карты.",
+          "Если карта всё равно отсутствует, укажи героя, редкость и откуда она появилась. Для карты из пака добавь дату открытия."
+        ],
+        "report": "Укажи героя, редкость, дату получения и применённые фильтры."
+      },
+      "en": {
+        "title": "A card is missing from the collection",
+        "steps": [
+          "Check the Steam account, clear collection filters and search, and reload the page.",
+          "If you were looking at your profile showcase, check the full collection separately. The showcase displays selected cards.",
+          "If it is still missing, include the hero, rarity and how it was acquired. For a pack card, add the opening date."
+        ],
+        "report": "Include the hero, rarity, acquisition date and any active filters."
+      }
+    },
+    {
+      "id": "account_data",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "удалить аккаунт",
+        "удаление аккаунта",
+        "удалить профиль",
+        "данные и аккаунт",
+        "данные профиля",
+        "персональные данные",
+        "настройки приватности",
+        "privacy",
+        "personal data",
+        "delete account",
+        "account deletion",
+        "delete profile",
+        "data and account"
+      ],
+      "sources": [
+        "privacy",
+        "site_support"
+      ],
+      "ru": {
+        "title": "Мои данные и удаление аккаунта",
+        "steps": [
+          "Войди под нужным Steam-аккаунтом и открой в кабинете раздел «Данные и аккаунт». Там доступны действия с данными проекта, включая удаление.",
+          "Перед подтверждением прочитай, какие данные затрагивает действие. Подробности обработки описаны в политике конфиденциальности сайта.",
+          "Если раздел недоступен, напиши в поддержку, что именно нужно сделать и на каком шаге возникла ошибка."
+        ],
+        "report": "Укажи, с каким действием нужна помощь. Документы, пароль Steam и коды входа не присылай."
+      },
+      "en": {
+        "title": "My data and account deletion",
+        "steps": [
+          "Sign in with the correct Steam account and open Data & Account in the dashboard. The available actions include project account deletion.",
+          "Review what the action affects before confirming. The site's privacy notice describes how data is handled.",
+          "If the section is unavailable, tell support what action you need help with and where it fails."
+        ],
+        "report": "Include the action you need help with. Keep identity documents, passwords and sign-in codes private."
+      }
+    },
+    {
+      "id": "account_recovery",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "взломали steam",
+        "угнали steam",
+        "украли аккаунт",
+        "восстановить steam",
+        "потерял доступ к steam",
+        "забыл пароль steam",
+        "steam guard не приходит",
+        "steam account stolen",
+        "hijacked steam",
+        "steam account hacked",
+        "forgot steam password",
+        "steam guard code not received",
+        "lost steam account"
+      ],
+      "sources": [
+        "steam_recovery",
+        "steam_login"
+      ],
+      "ru": {
+        "title": "Восстановление доступа к Steam",
+        "steps": [
+          "Если подозреваешь угон аккаунта, открой официальный мастер восстановления Steam с доверенного устройства.",
+          "Если забыл пароль или потерял доступ к Steam Guard, выбери «Помогите, я не могу войти» в Steam Support.",
+          "Данные для подтверждения владения вводи только на официальной странице Steam. В боте можно отдельно сообщить о проблеме с привязкой Companion после восстановления."
+        ],
+        "report": "Для проблемы с Deadlock Contracts укажи только симптом на сайте или в Companion. Доказательства владения передавай напрямую Steam."
+      },
+      "en": {
+        "title": "Recover access to a Steam account",
+        "steps": [
+          "For suspected account theft, open Steam's official recovery wizard on a trusted device.",
+          "For a forgotten password or lost Steam Guard access, choose Help, I can't sign in in Steam Support.",
+          "Enter ownership information only on the official Steam page. Contact this bot separately for a Companion pairing issue after recovery."
+        ],
+        "report": "For a Deadlock Contracts issue, describe only the site or Companion symptom. Give proof of ownership directly to Steam."
+      }
+    },
+    {
+      "id": "security_report",
+      "group": "site",
+      "category": "other",
+      "aliases": [
+        "нашёл уязвимость",
+        "уязвимость сайта",
+        "ошибка безопасности",
+        "как сообщить об уязвимости",
+        "раскрытие уязвимости",
+        "security issue",
+        "security bug",
+        "vulnerability report",
+        "found a vulnerability",
+        "responsible disclosure"
+      ],
+      "sources": [
+        "site_support"
+      ],
+      "ru": {
+        "title": "Сообщить о проблеме безопасности",
+        "steps": [
+          "Открой обращение в личном чате с ботом. Укажи затронутый экран или функцию и почему поведение кажется опасным.",
+          "Используй для описания свои тестовые данные и убери секреты и сведения о других людях из скриншотов.",
+          "Если проблема относится к самому Deadlock или аккаунту Steam, выбери соответствующий канал Steam Support."
+        ],
+        "report": "Укажи затронутую страницу и наблюдаемый эффект. Секреты и чужие данные не нужны."
+      },
+      "en": {
+        "title": "Report a security issue",
+        "steps": [
+          "Open a ticket in the bot's private chat. Describe the affected screen or feature and the potential impact.",
+          "Use your own test data and redact secrets and information about other people in screenshots.",
+          "For a problem in Deadlock itself or a Steam account, use the corresponding Steam Support channel."
+        ],
+        "report": "Include the affected page and observed impact. Keep secrets and other people's data private."
+      }
+    },
+    {
+      "id": "game_voice",
+      "group": "game",
+      "category": "other",
+      "aliases": [
+        "микрофон не работает",
+        "не работает микрофон",
+        "не слышат в войсе",
+        "не слышно в голосовом чате",
+        "не работает войс",
+        "microphone not working",
+        "mic not working",
+        "voice chat not working",
+        "can't hear teammates",
+        "push to talk not working"
+      ],
+      "sources": [
+        "steam_tech",
+        "forum"
+      ],
+      "ru": {
+        "title": "Не работает микрофон или голосовой чат",
+        "steps": [
+          "Проверь, видит ли система нужный микрофон и есть ли сигнал в настройках звука. Затем проверь голосовой ввод, громкость и назначение клавиши в игре.",
+          "Если голос не работает только в Deadlock, попробуй проверить после перезапуска игры. Если на экране есть предупреждение об ограничении, открой подсказку о бане чата.",
+          "Если ограничения нет и ошибка повторяется, сообщи в Bug Reports, как ведут себя микрофон, входящий голос и остальной звук."
+        ],
+        "report": "Укажи устройство, ОС и чего именно нет: входящего голоса, твоего микрофона или обоих."
+      },
+      "en": {
+        "title": "Microphone or voice chat does not work",
+        "steps": [
+          "Check whether your system detects the microphone and shows an input signal. Check the in-game voice input, volume and key binding.",
+          "If voice only fails in Deadlock, test after restarting the game. If the game shows a restriction, see the text or voice restriction guide.",
+          "If no restriction appears and the issue repeats, tell Bug Reports whether your mic, incoming voice and other audio are affected."
+        ],
+        "report": "Include the device, OS, and whether incoming voice, your mic or both are affected."
+      }
+    }
+  ]
+}
