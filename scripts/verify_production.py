@@ -121,8 +121,15 @@ def main():
                 assert me.json()['user']['group_role'] == 'head'
                 lessons = {item['id']: item for item in client.get(lesson_path).json()}
                 for old in original_lessons:
-                    assert lessons[old['id']] == {**{k:v for k,v in old.items() if k != 'queue_enabled'},
-                        'subject_key': lessons[old['id']]['subject_key']}
+                    # Legacy occurrences were all generated from templates.
+                    # Keep strict equality, including the new API discriminator.
+                    expected = {**{k:v for k,v in old.items() if k != 'queue_enabled'},
+                                'subject_key': lessons[old['id']]['subject_key'],
+                                'is_one_off': False}
+                    actual = lessons[old['id']]
+                    assert actual == expected, ('Migrated occurrence differs', old['id'],
+                        {k for k in actual.keys() | expected.keys()
+                         if k not in actual or k not in expected or actual[k] != expected[k]})
             old_session.close()
             print('PASS: legacy installation migrated to three databases; pre-upgrade dumps matched, lessons and old sessions preserved, restart idempotent')
             # Keep volumes, stop old stacks to measure only the fresh production profile.

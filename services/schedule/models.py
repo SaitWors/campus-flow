@@ -22,6 +22,7 @@ class Rule(Base):
 class Occurrence(Base):
     __tablename__='occurrences'
     id:Mapped[str]=mapped_column(String(36),primary_key=True)
+    # Empty string is reserved for standalone occurrences (no template).
     rule_id:Mapped[str]=mapped_column(String(36),index=True)
     original_date:Mapped[str]=mapped_column(String(10),index=True)
     date:Mapped[str]=mapped_column(String(10),index=True)

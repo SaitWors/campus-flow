@@ -52,6 +52,6 @@ export default function Schedule({calendar=false,revision,guest=false}:{calendar
   </section>
   <div className="schedule-legend">{['lecture','lab','practice'].map(k=><span key={k}><span className={'legend-dot '+k}/>{t(k)}</span>)}<span>{t('liveSchedule')}</span></div>
   {selected&&<LessonDetail initial={selected} revision={revision} guest={guest} onClose={()=>setSelected(null)}/>}
-  {adding&&<Suspense fallback={<Loading/>}><LessonForm onClose={()=>setAdding(false)} onSave={refresh}/></Suspense>}
+  {adding&&<Suspense fallback={<Loading/>}><LessonForm initialDate={iso(date)} onClose={()=>setAdding(false)} onSave={refresh}/></Suspense>}
  </>;
 }

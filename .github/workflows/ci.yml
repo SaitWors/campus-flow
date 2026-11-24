@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   production:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       CAMPUS_DISPOSABLE: '1'
@@ -37,7 +37,7 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
     env:
       COMPOSE_PROFILES: translation
       TRANSLATION_WORKER: 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -82,8 +82,12 @@ jobs:
           curl --fail http://localhost:8080/api/auth/openapi.json -o /tmp/auth-schema.json
           curl --fail http://localhost:8080/api/schedule/openapi.json -o /tmp/schedule-schema.json
           curl --fail http://localhost:8080/api/notifications/openapi.json -o /tmp/notifications-schema.json
-          test -z "$(docker compose port translator 5000 2>/dev/null || true)"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/internal/events)" = 404
+          translator_id="$(docker compose ps -q translator)"
+          test -n "$translator_id"
+          docker inspect "$translator_id" --format '{{json .HostConfig.PortBindings}}' | python -c 'import json,sys; bindings=json.load(sys.stdin); assert not any((bindings or {}).values()), bindings; print("PASS: translator has no published host ports")'
+          status="$(curl --noproxy '*' --silent --show-error -o /dev/null -w '%{http_code}' http://localhost:8080/internal/events)"
+          echo "Private route HTTP status: $status"
+          test "$status" = 404
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Install browser for visual checks
@@ -122,7 +126,7 @@ jobs:
         if: always()
         run: docker compose down --volumes
   lightweight:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4

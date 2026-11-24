@@ -377,3 +377,38 @@ def test_obsolete_lesson_option_is_rejected_and_never_returned(academic_cluster)
     c['admin'].request('POST', '/api/schedule/rules',
                        {**c['rule_data'], 'queue_enabled': True, 'subgroup': 2}, expected=422)
     assert 'queue_enabled' not in c['lesson'] and 'queue_enabled' not in c['rule']
+
+def test_one_off_class_is_independent_and_uses_existing_lifecycle(academic_cluster):
+    c = academic_cluster
+    admin, guest, student = c['admin'], c['guest'], c['students'][0]
+    day = c['today'].isoformat()
+    next_week = (c['today']+timedelta(days=7)).isoformat()
+    path = '/api/schedule/occurrences'
+    query = '?start='+day+'&end='+next_week
+    body = {k:v for k,v in c['rule_data'].items() if k not in ('weekday','parity','revision')}
+    body.update(title='Разовая консультация', date=day, start='12:00', end='13:00')
+    rules_before = admin.request('GET', '/api/schedule/rules')
+    guest.request('POST', path, body, expected=401)
+    student.request('POST', path, body, expected=403)
+    admin.request('POST', path, {**body, 'date': '2000-01-01'}, expected=422)
+    admin.request('POST', path, {**body, 'start':'10:00','end':'11:00'}, expected=409)
+    created = admin.request('POST', path, body, expected=201)
+    assert created['date'] == created['original_date'] == day
+    assert created['is_one_off'] is True and created['rule_id'] == ''
+    assert created['status'] == 'confirmed' and created['revision'] == 1
+    assert admin.request('GET', '/api/schedule/rules') == rules_before
+    assert [l['date'] for l in admin.request('GET', path+query) if l['title']==body['title']] == [day]
+    assert any(l['id']==created['id'] for l in guest.request('GET', '/api/schedule/guest/occurrences'+query+'&subgroup=1'))
+    assert not any(l['id']==created['id'] for l in guest.request('GET', '/api/schedule/guest/occurrences'+query+'&subgroup=2'))
+    events = admin.request('GET', '/api/schedule/events')
+    event = next(e for e in events if e['data'].get('occurrence_id')==created['id'])
+    assert event['type']=='occurrence.created' and event['data']['before'] is None
+    assert event['data']['after']['date']==day
+    config = admin.request('GET', '/api/schedule/settings')
+    admin.request('PUT', '/api/schedule/settings', config)
+    assert [l['date'] for l in admin.request('GET', path+query) if l['title']==body['title']] == [day]
+    moved = admin.request('PATCH', path+'/'+created['id'], {**body, 'date':next_week,'status':'confirmed','revision':1})
+    assert moved['is_one_off'] is True and moved['date']==next_week
+    admin.request('DELETE', path+'/'+created['id']+'?revision=2')
+    assert not any(l['id']==created['id'] for l in admin.request('GET', path+query))
+    assert admin.request('GET', '/api/schedule/rules') == rules_before
