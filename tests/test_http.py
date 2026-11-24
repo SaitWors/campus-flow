@@ -129,3 +129,42 @@ def test_teaching_end_preserves_assessments_and_restores_regular_classes(cluster
         assert next(x for x in restored if x['id']==past['id'])['revision']==past['revision']
     finally:
         admin.close()
+
+
+@pytest.mark.parametrize('scope', ['series', 'subject'])
+def test_delete_following_preserves_other_classes(cluster,scope):
+    from datetime import datetime,timedelta,timezone
+    from scripts.smoke import Client,PASSWORD
+    urls,setup_key=cluster
+    admin=Client(urls)
+    try:
+        session=admin.request('POST','/api/auth/setup',{'email':'admin@example.test','password':PASSWORD,'name':'Test Administrator','setup_key':setup_key},expected=201)
+        admin.csrf=session['csrf']
+        today=datetime.now(timezone.utc).date()
+        first=today-timedelta(days=7)
+        cutoff=today+timedelta(days=7)
+        last=today+timedelta(days=21)
+        config=admin.request('GET','/api/schedule/settings')
+        config.update(semester_start=first.isoformat(),semester_end=last.isoformat(),anchor_monday=(today-timedelta(days=today.weekday())).isoformat(),timezone='UTC',configured=True)
+        config=admin.request('PUT','/api/schedule/settings',config)
+        def rule(title,kind,start,end):
+            return admin.request('POST','/api/schedule/rules',{'title':title,'kind':kind,'start':start,'end':end,'weekday':today.weekday()},expected=201)
+        lecture=rule('Test subject','lecture','09:00','10:00')
+        lab=rule('Test subject','lab','11:00','12:00')
+        other=rule('Other subject','lecture','13:00','14:00')
+        exam=admin.request('POST','/api/schedule/occurrences',{'title':'Test subject','kind':'exam','start':'15:00','end':'16:00','date':cutoff.isoformat()},expected=201)
+        path=f'/api/schedule/occurrences?start={first}&end={last}'
+        initial=admin.request('GET',path)
+        target=next(x for x in initial if x['rule_id']==lecture['id'] and x['date']==cutoff.isoformat())
+        result=admin.request('DELETE',f"/api/schedule/occurrences/{target['id']}/following?revision={target['revision']}&scope={scope}")
+        assert result['rules_changed']==(1 if scope=='series' else 2)
+        removed={lecture['id']}|({lab['id']} if scope=='subject' else set())
+        expected={x['id'] for x in initial if not(x['rule_id'] in removed and x['date']>=cutoff.isoformat())}
+        assert {x['id'] for x in admin.request('GET',path)}==expected
+        assert exam['id'] in expected
+        # Changing semester settings must not resurrect truncated templates.
+        admin.request('PUT','/api/schedule/settings',config)
+        assert {x['id'] for x in admin.request('GET',path)}==expected
+        assert {x['id'] for x in admin.request('GET',path.replace('/occurrences','/guest/occurrences'))}==expected
+    finally:
+        admin.close()
