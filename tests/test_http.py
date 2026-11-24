@@ -56,3 +56,115 @@ def test_real_http_workflow(cluster):
 
     from scripts.verify_materials import run as materials
     materials(urls)
+
+
+@pytest.mark.parametrize('kind', ['credit', 'exam'])
+def test_standalone_assessment(cluster,kind):
+    from datetime import date,timedelta
+    from scripts.smoke import Client,PASSWORD
+    urls,setup_key=cluster
+    admin=Client(urls)
+    try:
+        session=admin.request('POST','/api/auth/setup',{'email':'admin@example.test','password':PASSWORD,'name':'Test Administrator','setup_key':setup_key},expected=201)
+        admin.csrf=session['csrf']
+        config=admin.request('GET','/api/schedule/settings')
+        day=date.fromisoformat(config['semester_start'])+timedelta(days=1)
+        end=day+timedelta(days=7)
+        body={'title':'Assessment test','kind':kind,'start':'10:00','end':'11:00','teacher':'Teacher','room':'101','subgroup':0}
+        admin.request('POST','/api/schedule/rules',{**body,'weekday':day.weekday()},expected=422)
+        item=admin.request('POST','/api/schedule/occurrences',{**body,'date':day.isoformat()},expected=201)
+        assert item['kind']==kind and item['is_one_off'] and item['rule_id']==''
+        path=f'/api/schedule/occurrences?start={day}&end={end}'
+        assert [x['id'] for x in admin.request('GET',path)]==[item['id']]
+        updated=admin.request('PATCH','/api/schedule/occurrences/'+item['id'],{**body,'date':end.isoformat(),'status':'confirmed','revision':item['revision']})
+        assert updated['date']==end.isoformat() and updated['kind']==kind
+        assert any(e['data'].get('after',{}).get('kind')==kind for e in admin.request('GET','/api/schedule/events?after=0'))
+        admin.request('DELETE',f"/api/schedule/occurrences/{item['id']}?revision={updated['revision']}")
+        assert not admin.request('GET',path)
+    finally:
+        admin.close()
+
+
+def test_teaching_end_preserves_assessments_and_restores_regular_classes(cluster):
+    from datetime import datetime,timedelta,timezone
+    from scripts.smoke import Client,PASSWORD
+    urls,setup_key=cluster
+    admin=Client(urls)
+    try:
+        session=admin.request('POST','/api/auth/setup',{'email':'admin@example.test','password':PASSWORD,'name':'Test Administrator','setup_key':setup_key},expected=201)
+        admin.csrf=session['csrf']
+        today=datetime.now(timezone.utc).date()
+        first=today-timedelta(days=7)
+        cutoff=today+timedelta(days=1)
+        last=today+timedelta(days=21)
+        config=admin.request('GET','/api/schedule/settings')
+        config.update(semester_start=first.isoformat(),semester_end=last.isoformat(),anchor_monday=(today-timedelta(days=today.weekday())).isoformat(),timezone='UTC',configured=True)
+        config=admin.request('PUT','/api/schedule/settings',config)
+        body={'title':'Regular class','kind':'lecture','start':'09:00','end':'10:00'}
+        rule=admin.request('POST','/api/schedule/rules',{**body,'weekday':today.weekday()},expected=201)
+        path=f'/api/schedule/occurrences?start={first}&end={last}'
+        regular=admin.request('GET',path)
+        past=next(x for x in regular if x['date']==first.isoformat())
+        future=next(x for x in regular if x['date']==(today+timedelta(days=7)).isoformat())
+        moved_date=today+timedelta(days=8)
+        admin.request('PATCH','/api/schedule/occurrences/'+future['id'],{**body,'date':moved_date.isoformat(),'room':'Changed room','status':'pending','revision':future['revision']})
+        oneoffs=[]
+        for kind,hour in [('lecture','11'),('credit','13'),('exam','15')]:
+            oneoffs.append(admin.request('POST','/api/schedule/occurrences',{'title':'Standalone '+kind,'kind':kind,'start':hour+':00','end':hour+':30','date':moved_date.isoformat()},expected=201))
+        config=admin.request('PUT','/api/schedule/settings',{**config,'teaching_end':cutoff.isoformat()})
+        items=admin.request('GET',path)
+        assert past['id'] in {x['id'] for x in items}
+        assert all(x['date']<=cutoff.isoformat() for x in items if x['rule_id'])
+        assert {x['id'] for x in oneoffs}<={x['id'] for x in items}
+        guest=admin.request('GET',path.replace('/occurrences','/guest/occurrences'))
+        assert {x['id'] for x in items}=={x['id'] for x in guest}
+        admin.request('PUT','/api/schedule/settings',{**config,'teaching_end':(last+timedelta(days=1)).isoformat()},expected=422)
+        extra=admin.request('POST','/api/schedule/rules',{**body,'title':'Second rule','start':'17:00','end':'18:00','weekday':today.weekday()},expected=201)
+        assert all(x['date']<=cutoff.isoformat() for x in admin.request('GET',path) if x['rule_id']==extra['id'])
+        config=admin.request('PUT','/api/schedule/settings',{**config,'teaching_end':None})
+        restored=admin.request('GET',path)
+        assert {x['id'] for x in regular}<={x['id'] for x in restored}
+        moved=next(x for x in restored if x['id']==future['id'])
+        assert moved['date']==moved_date.isoformat() and moved['room']=='Changed room' and moved['status']=='pending'
+        assert next(x for x in restored if x['id']==past['id'])['revision']==past['revision']
+    finally:
+        admin.close()
+
+
+@pytest.mark.parametrize('scope', ['series', 'subject'])
+def test_delete_following_preserves_other_classes(cluster,scope):
+    from datetime import datetime,timedelta,timezone
+    from scripts.smoke import Client,PASSWORD
+    urls,setup_key=cluster
+    admin=Client(urls)
+    try:
+        session=admin.request('POST','/api/auth/setup',{'email':'admin@example.test','password':PASSWORD,'name':'Test Administrator','setup_key':setup_key},expected=201)
+        admin.csrf=session['csrf']
+        today=datetime.now(timezone.utc).date()
+        first=today-timedelta(days=7)
+        cutoff=today+timedelta(days=7)
+        last=today+timedelta(days=21)
+        config=admin.request('GET','/api/schedule/settings')
+        config.update(semester_start=first.isoformat(),semester_end=last.isoformat(),anchor_monday=(today-timedelta(days=today.weekday())).isoformat(),timezone='UTC',configured=True)
+        config=admin.request('PUT','/api/schedule/settings',config)
+        def rule(title,kind,start,end):
+            return admin.request('POST','/api/schedule/rules',{'title':title,'kind':kind,'start':start,'end':end,'weekday':today.weekday()},expected=201)
+        lecture=rule('Test subject','lecture','09:00','10:00')
+        lab=rule('Test subject','lab','11:00','12:00')
+        other=rule('Other subject','lecture','13:00','14:00')
+        exam=admin.request('POST','/api/schedule/occurrences',{'title':'Test subject','kind':'exam','start':'15:00','end':'16:00','date':cutoff.isoformat()},expected=201)
+        path=f'/api/schedule/occurrences?start={first}&end={last}'
+        initial=admin.request('GET',path)
+        target=next(x for x in initial if x['rule_id']==lecture['id'] and x['date']==cutoff.isoformat())
+        result=admin.request('DELETE',f"/api/schedule/occurrences/{target['id']}/following?revision={target['revision']}&scope={scope}")
+        assert result['rules_changed']==(1 if scope=='series' else 2)
+        removed={lecture['id']}|({lab['id']} if scope=='subject' else set())
+        expected={x['id'] for x in initial if not(x['rule_id'] in removed and x['date']>=cutoff.isoformat())}
+        assert {x['id'] for x in admin.request('GET',path)}==expected
+        assert exam['id'] in expected
+        # Changing semester settings must not resurrect truncated templates.
+        admin.request('PUT','/api/schedule/settings',config)
+        assert {x['id'] for x in admin.request('GET',path)}==expected
+        assert {x['id'] for x in admin.request('GET',path.replace('/occurrences','/guest/occurrences'))}==expected
+    finally:
+        admin.close()

@@ -2,9 +2,9 @@ import {lazy,Suspense,useEffect,useState} from 'react';
 import {BookOpen,CalendarDays,ChevronRight,Clock,ExternalLink,MapPin,Monitor,Settings2,Trash2,UserRound,Users} from 'lucide-react';
 import {api} from './api';
 import {errorText} from './i18n';
-import {format,fromIso} from './date';
+import {format,fromIso,dateInZone,iso} from './date';
 import type {Lang,Lesson} from './types';
-import {Badge,Button,Confirm,Dialog,Loading,Notice,useApp,useT} from './ui';
+import {Badge,Button,Dialog,Loading,Notice,Field,useApp,useJob,useT} from './ui';
 
 const LessonForm=lazy(()=>import('./LessonForm'));
 export function lessonTitle(lesson:Pick<Lesson,'title'|'title_en'|'title_en_auto'>,lang:Lang){return lang==='en'?(lesson.title_en||lesson.title_en_auto||lesson.title):lesson.title;}
@@ -21,8 +21,8 @@ export function LessonCard({lesson,onClick,compact=false}:{lesson:Lesson;onClick
 }
 
 export function LessonDetail({initial,revision,onClose,guest=false}:{initial:Lesson;revision:number;onClose:()=>void;guest?:boolean}){
- const t=useT();const {lang,user,refresh}=useApp();
- const [lesson,setLesson]=useState(initial);const [edit,setEdit]=useState(false);const [remove,setRemove]=useState(false);const [error,setError]=useState('');
+ const t=useT();const {lang,user,refresh,settings}=useApp();const deleteJob=useJob();
+ const [lesson,setLesson]=useState(initial);const [edit,setEdit]=useState(false);const [remove,setRemove]=useState(false);const [scope,setScope]=useState<'single'|'series'|'subject'>('single');const [error,setError]=useState('');
  useEffect(()=>{
   if(guest)return;
   let active=true;
@@ -38,10 +38,20 @@ export function LessonDetail({initial,revision,onClose,guest=false}:{initial:Les
     {lesson.subject_key&&<a className="button secondary" href={'#subject/'+encodeURIComponent(lesson.subject_key)} onClick={onClose}><BookOpen size={17}/>{t('openSubject')}</a>}
     {lesson.meeting_url&&lesson.status!=='cancelled'&&<a className="button secondary" href={lesson.meeting_url} target="_blank" rel="noreferrer">{t('externalMeeting')}<ExternalLink size={17}/></a>}
     {user.role!=='student'&&<Button variant="secondary" onClick={()=>setEdit(true)}><Settings2 size={17}/>{t('editLesson')}</Button>}
-    {(user.role==='admin'||user.role==='head')&&<Button variant="ghost" onClick={()=>setRemove(true)}><Trash2 size={17}/>{t('delete')}</Button>}
+    {(user.role==='admin'||user.role==='head')&&<Button variant="ghost" onClick={()=>{setScope('single');setRemove(true);}}><Trash2 size={17}/>{t('deleteOccurrence')}</Button>}
    </div>}
   </div>
   {edit&&<Suspense fallback={<Loading/>}><LessonForm lesson={lesson} onClose={()=>setEdit(false)} onSave={refresh}/></Suspense>}
-  {remove&&<Confirm title={t('delete')} description={t('deleteLessonConfirm')} onClose={()=>setRemove(false)} onConfirm={async()=>{await api(`/api/schedule/occurrences/${lesson.id}?revision=${lesson.revision}`,'DELETE');refresh();onClose();}}/>}
+  {remove&&<Dialog title={t('deleteOccurrence')} onClose={()=>!deleteJob.busy&&setRemove(false)}>
+   <form onSubmit={e=>{e.preventDefault();void deleteJob.run(async()=>{await api(`/api/schedule/occurrences/${lesson.id}${scope==='single'?'':'/following'}?revision=${lesson.revision}${scope==='single'?'':'&scope='+scope}`,'DELETE');setRemove(false);refresh();onClose();});}}>
+    <p>{lessonTitle(lesson,lang)} · {format(fromIso(lesson.date),lang,{dateStyle:'long'})}</p>
+    <fieldset className="form-fieldset" disabled={deleteJob.busy}>
+     <Field label={t('deleteScope')}><select value={scope} onChange={e=>setScope(e.target.value as typeof scope)}><option value="single">{t('deleteSingle')}</option>{lesson.rule_id&&!lesson.is_one_off&&lesson.kind!=='exam'&&lesson.kind!=='credit'&&lesson.date>=iso(dateInZone(settings.timezone))&&<><option value="series">{t('deleteFollowingSeries')}</option><option value="subject">{t('deleteFollowingSubject')}</option></>}</select></Field>
+     <p className="muted">{t(scope==='single'?'deleteLessonConfirm':scope==='series'?'deleteFollowingSeriesHint':'deleteFollowingSubjectHint')}</p>
+    </fieldset>
+    {deleteJob.error&&<Notice error>{deleteJob.error}</Notice>}
+    <div className="form-actions"><Button variant="secondary" disabled={deleteJob.busy} onClick={()=>setRemove(false)}>{t('cancel')}</Button><Button type="submit" variant="danger" busy={deleteJob.busy}>{t('confirm')}</Button></div>
+   </form>
+  </Dialog>}
  </Dialog>;
 }

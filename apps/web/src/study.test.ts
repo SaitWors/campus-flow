@@ -10,6 +10,16 @@ const storage=()=>{
 };
 
 describe('study filters',()=>{
+ it('persists and applies assessment filters',()=>{
+  const device=storage();
+  const items=[{...lesson('exam','',''),kind:'exam' as const},{...lesson('credit','',''),kind:'credit' as const}];
+  for(const kind of ['exam','credit'] as const){
+   saveStudyFilters(device,student,{...defaultStudyFilters(student),kind});
+   const filters=readStudyFilters(device,student);
+   expect(filters.kind).toBe(kind);
+   expect(filterLessons(items,filters).map(l=>l.id)).toEqual([kind]);
+  }
+ });
  it('starts with the account subgroup and includes common lessons',()=>{
   const defaults=defaultStudyFilters(student);
   expect(defaults.subgroup).toBe(2);

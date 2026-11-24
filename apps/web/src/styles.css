@@ -45,3 +45,6 @@
 .admin-tabs button svg{flex-shrink:0}
 @media(max-width:780px){.admin-tabs{display:flex}.admin-tabs button{white-space:nowrap;flex:none}}
 .schedule-board>.translation-note{padding:10px 20px}
+
+/* Standalone assessments reuse the existing light/dark semantic palette. */
+.badge.credit,.mini-lesson.credit{color:var(--amber);background:var(--amber-bg)}.badge.exam,.mini-lesson.exam{color:var(--red);background:var(--red-bg)}.lesson-card.credit{border-top-color:var(--amber)}.lesson-card.exam{border-top-color:var(--red)}.mini-lesson.credit{border-color:var(--amber)}.mini-lesson.exam{border-color:var(--red)}.legend-dot.credit{background:var(--amber)}.legend-dot.exam{background:var(--red)}

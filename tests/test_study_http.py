@@ -21,7 +21,7 @@ LESSON_FIELDS = ('title', 'title_en', 'kind', 'teacher', 'room', 'mode',
                  'meeting_url', 'note', 'start', 'end', 'subgroup', 'date',
                  'status', 'revision')
 SAFE_LESSON_FIELDS = {'title', 'title_en', 'date', 'start', 'end', 'room',
-                      'status', 'subgroup'}
+                      'status', 'subgroup', 'kind'}
 
 
 class AcademicClient:
@@ -346,6 +346,7 @@ def test_lesson_events_have_safe_before_after_on_move_rule_edit_and_removal(acad
                    if event['data']['occurrence_id'] == c['lesson']['id'])
     assert created['data']['before'] is None
     assert set(created['data']['after']) == SAFE_LESSON_FIELDS
+    assert created['data']['after']['kind'] == c['lesson']['kind']
     old = c['lesson']
     changed = c['admin'].request('PATCH', '/api/schedule/occurrences/'+old['id'],
                                  {**{key: old[key] for key in LESSON_FIELDS},
@@ -370,6 +371,10 @@ def test_lesson_events_have_safe_before_after_on_move_rule_edit_and_removal(acad
         encoded = json.dumps(event)
         assert 'PRIVATE TEACHER' not in encoded and 'PRIVATE NOTE' not in encoded and 'private-class' not in encoded
         assert set(event['data']['after']) == SAFE_LESSON_FIELDS
+        assert event['data']['after']['kind'] == c['rule_data']['kind']
+        if event['data']['before'] is not None:
+            assert set(event['data']['before']) == SAFE_LESSON_FIELDS
+            assert event['data']['before']['kind'] == c['rule_data']['kind']
 
 
 def test_obsolete_lesson_option_is_rejected_and_never_returned(academic_cluster):

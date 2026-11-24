@@ -23,7 +23,7 @@ from services.schedule.materials import migrate_materials, initialize_materials,
 
 engine, DB=database('schedule')
 translator=TitleTranslator(DB)
-DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester_start':'2026-09-01','semester_end':'2027-01-31','anchor_monday':'2026-08-31','anchor_parity':'odd','timezone':'Europe/Moscow','configured':False}
+DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester_start':'2026-09-01','semester_end':'2027-01-31','teaching_end':None,'anchor_monday':'2026-08-31','anchor_parity':'odd','timezone':'Europe/Moscow','configured':False}
 
 @asynccontextmanager
 async def lifespan(app):
@@ -52,7 +52,7 @@ def parity(day,config):
 def audit(db,user,action,target,data=None):
     db.add(Audit(actor=user['name'],action=action,target=target,data=data or {}))
 
-SAFE_EVENT_FIELDS=('title','title_en','date','start','end','room','status','subgroup')
+SAFE_EVENT_FIELDS=('title','title_en','date','start','end','room','status','subgroup','kind')
 
 def safe_lesson(item):
     data={**item.data,'date':item.date}
@@ -79,6 +79,7 @@ class ConfigInput(Input):
     course:int=Field(ge=1,le=6)
     semester_start:date
     semester_end:date
+    teaching_end:date|None=None
     anchor_monday:date
     anchor_parity:Literal['odd','even']
     timezone:str=Field(default='Europe/Moscow',max_length=60)
@@ -87,6 +88,7 @@ class ConfigInput(Input):
     def valid(self):
         if self.anchor_monday.weekday()!=0:raise ValueError('anchor_must_be_monday')
         if not 0<(self.semester_end-self.semester_start).days<=366:raise ValueError('invalid_semester')
+        if self.teaching_end is not None and not self.semester_start<=self.teaching_end<=self.semester_end:raise ValueError('invalid_teaching_end')
         try:ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError:raise ValueError('invalid_timezone')
         return self
@@ -94,7 +96,7 @@ class ConfigInput(Input):
 class LessonInput(Input):
     title:str=Field(min_length=2,max_length=120)
     title_en:str=Field(default='',max_length=120)
-    kind:Literal['lecture','lab','practice']
+    kind:Literal['lecture','lab','practice','credit','exam']
     teacher:str=Field(default='',max_length=100)
     room:str=Field(default='',max_length=80)
     mode:Literal['onsite','remote','hybrid']='onsite'
@@ -110,6 +112,7 @@ class LessonInput(Input):
         return self
 
 class RuleInput(LessonInput):
+    kind:Literal['lecture','lab','practice']
     weekday:int=Field(ge=0,le=6)
     parity:Literal['all','odd','even']='all'
     revision:int=Field(default=0,ge=0)
@@ -125,21 +128,29 @@ class ExceptionInput(LessonInput):
     revision:int=Field(ge=1)
 
 
+def teaching_end(config,rule=None):
+    end=config.get('teaching_end') or config['semester_end']
+    if rule and rule.data.get('stop_from'):
+        end=min(end,(date.fromisoformat(rule.data['stop_from'])-timedelta(days=1)).isoformat())
+    return end
+
+
 def generate_rule(db,rule,config,future_only=False):
     start=date.fromisoformat(config['semester_start']);end=date.fromisoformat(config['semester_end'])
     today=datetime.now(ZoneInfo(config['timezone'])).date()
+    cutoff=teaching_end(config,rule)
     wanted=set();d=start
     while d<=end:
         if not rule.archived and d.weekday()==rule.data['weekday'] and (rule.data['parity']=='all' or parity(d,config)==rule.data['parity']):
             wanted.add(d.isoformat())
             oid=str(uuid.uuid5(uuid.NAMESPACE_URL,f'campus-flow:{rule.id}:{d.isoformat()}'))
             item=db.get(Occurrence,oid)
-            content={k:v for k,v in lesson_data(rule.data).items() if k not in ('weekday','parity')}
+            content={k:v for k,v in lesson_data(rule.data).items() if k not in ('weekday','parity','stop_from')}
             content.update(status='confirmed',demo=bool(rule.data.get('demo',False)))
-            if not item and not (future_only and d<today):
+            if not item and d.isoformat()<=cutoff and not (future_only and d<today):
                 item=Occurrence(id=oid,rule_id=rule.id,original_date=d.isoformat(),date=d.isoformat(),data=content)
                 db.add(item);db.flush();event(db,'occurrence.created',item)
-            elif item and not item.overridden and d>=today and item.data!=content:
+            elif item and not item.overridden and d>=today and d.isoformat()<=cutoff and item.date<=cutoff and item.data!=content:
                 before=safe_lesson(item)
                 item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item,before)
         d+=timedelta(days=1)
@@ -150,6 +161,25 @@ def generate_rule(db,rule,config,future_only=False):
                 before=safe_lesson(item)
                 item.data={**item.data,'status':'cancelled','removed_from_template':True}
                 item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item,before)
+            continue
+        # A teaching cutoff is reversible and must not erase manual exceptions.
+        # Use the existing visibility tombstone so guest views, conflicts and
+        # calendar subscriptions all agree. Preserve historical occurrences.
+        if item.date<today.isoformat() or item.data.get('removed_from_schedule'):
+            continue
+        if item.data.get('kind') in ('credit','exam'):
+            continue
+        if item.date>cutoff:
+            if not item.data.get('removed_from_template'):
+                before=safe_lesson(item)
+                item.data={**item.data,'teaching_end_status':item.data['status'],
+                           'status':'cancelled','removed_from_template':True}
+                item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item,before)
+        elif 'teaching_end_status' in item.data and not rule.archived:
+            before=safe_lesson(item);content=dict(item.data)
+            content['status']=content.pop('teaching_end_status')
+            content.pop('removed_from_template',None)
+            item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item,before)
     db.flush()
 
 
@@ -208,7 +238,7 @@ def edit_rule(rule_id:str,data:RuleInput,request:Request):
         if r.revision!=data.revision:fail('revision_conflict',409)
         if not data.preview_token:fail('preview_required',409)
         if not hmac.compare_digest(data.preview_token,rule_preview_token(db,r,data,config)):fail('preview_stale',409)
-        before=r.data;r.data={**data.model_dump(exclude={'revision','preview_token'}),**({'demo':r.data['demo']} if 'demo' in r.data else {})};r.revision+=1
+        before=r.data;r.data={**data.model_dump(exclude={'revision','preview_token'}),**{k:r.data[k] for k in ('demo','stop_from') if k in r.data}};r.revision+=1
         generate_rule(db,r,config,future_only=True);conflicts(db);remember_subject(db,r.data);audit(db,u,'rule_updated',r.id,{'before':before,'after':r.data})
         return {**with_translation(lesson_data(r.data),db),'id':r.id,'revision':r.revision}
 
@@ -271,6 +301,8 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         if not item:fail('not_found',404)
         if item.revision!=data.revision:fail('revision_conflict',409)
         if not config['semester_start']<=data.date.isoformat()<=config['semester_end']:fail('outside_semester',422)
+        if 'teaching_end_status' in item.data:fail('not_found',404)
+        if item.rule_id and data.kind not in ('credit','exam') and data.date.isoformat()>teaching_end(config,db.get(Rule,item.rule_id)):fail('outside_teaching_period',422)
         before=row(item,config,db)
         item.data={**data.model_dump(mode='json',exclude={'revision','date'}),'demo':item.data.get('demo',False)}
         item.date=data.date.isoformat();item.overridden=True;item.revision+=1;item.updated_at=now()
@@ -295,6 +327,33 @@ def delete_occurrence(oid:str,request:Request,revision:int):
         db.flush();event(db,'occurrence.cancelled',item,before)
         audit(db,u,'occurrence_deleted',oid,{'before':before})
     return {'ok':True}
+
+@app.delete('/api/schedule/occurrences/{oid}/following')
+def delete_following(oid:str,request:Request,revision:int,scope:Literal['series','subject']='series'):
+    u=identity(request)
+    if u['role'] not in ('admin','head'):fail('forbidden',403)
+    with DB.begin() as db:
+        config=settings(db,True).data
+        item=db.get(Occurrence,oid)
+        if not item or not item.rule_id or item.data.get('removed_from_schedule') or item.data.get('removed_from_template') or item.data.get('kind') in ('credit','exam'):fail('not_found',404)
+        if item.revision!=revision:fail('revision_conflict',409)
+        if item.date<datetime.now(ZoneInfo(config['timezone'])).date().isoformat():fail('past_cutoff',422)
+        rule=db.get(Rule,item.rule_id)
+        if not rule or rule.archived:fail('not_found',404)
+        if scope=='subject' and subject_key(rule.data['title'])!=subject_key(item.data['title']):fail('subject_changed',422)
+        rules=[rule] if scope=='series' else [r for r in db.scalars(select(Rule).where(Rule.archived==False)) if subject_key(r.data['title'])==subject_key(rule.data['title'])]
+        # Capture the same day inclusively, across lecture/lab/practice templates.
+        day=item.date
+        changed=[]
+        for r in rules:
+            previous=r.data.get('stop_from')
+            if previous and previous<=day:continue
+            r.data={**r.data,'stop_from':day};r.revision+=1
+            generate_rule(db,r,config,future_only=True)
+            changed.append(r.id)
+        conflicts(db)
+        audit(db,u,'following_removed',oid,{'scope':scope,'from':day,'subject':rule.data['title'],'rule_ids':changed})
+        return {'ok':True,'rules_changed':len(changed)}
 
 @app.get('/api/schedule/events')
 def public_events(request:Request,after:int=Query(default=0,ge=0)):
@@ -614,7 +673,7 @@ def preview_rule(rule_id:str,data:RuleInput,request:Request):
         exceptions=sum(i.overridden for i in items)
         today=datetime.now(ZoneInfo(config['timezone'])).date().isoformat()
         past=sum(i.date<today for i in items)
-        rule.data={**data.model_dump(exclude={'revision','preview_token'}),**({'demo':rule.data['demo']} if 'demo' in rule.data else {})}
+        rule.data={**data.model_dump(exclude={'revision','preview_token'}),**{k:rule.data[k] for k in ('demo','stop_from') if k in rule.data}}
         generate_rule(db,rule,config,future_only=True)
         conflicts(db)
         changes=[]
