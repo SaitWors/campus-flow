@@ -14,6 +14,7 @@ export function LessonCard({lesson,onClick,compact=false}:{lesson:Lesson;onClick
  return <button type="button" className={`lesson-card ${lesson.kind}${lesson.status==='cancelled'?' cancelled':''}${compact?' compact':''}`} onClick={onClick}>
   <div className="lesson-card-top"><Badge tone={lesson.kind}>{t(lesson.kind)}</Badge><span>{lesson.start}–{lesson.end}</span></div>
   <h3>{lessonTitle(lesson,lang)}</h3>
+  {lesson.is_one_off&&<span className="lesson-mode">{t('oneOff')}</span>}
   <div className="lesson-meta"><span>{lesson.mode==='remote'?<Monitor size={14}/>:<MapPin size={14}/>} {lesson.room||t(lesson.mode)}</span>{lesson.subgroup>0&&<span><Users size={14}/> {lesson.subgroup}</span>}</div>
   <div className="lesson-card-bottom">{lesson.status!=='confirmed'?<Badge tone={lesson.status==='cancelled'?'red':'amber'}>{t(lesson.status)}</Badge>:<span className="lesson-mode">{t(lesson.mode)}</span>}<ChevronRight size={15}/></div>
  </button>;
@@ -30,7 +31,7 @@ export function LessonDetail({initial,revision,onClose,guest=false}:{initial:Les
  },[initial.id,revision,lang,guest]);
  return <Dialog title={lessonTitle(lesson,lang)} onClose={onClose} wide>
   <div className="lesson-detail">
-   <div className="badge-row"><Badge tone={lesson.kind}>{t(lesson.kind)}</Badge><Badge tone={lesson.status==='cancelled'?'red':lesson.status==='pending'?'amber':'green'}>{t(lesson.status)}</Badge><Badge>{t(lesson.mode)}</Badge>{lesson.demo&&<Badge tone="amber">{t('demo')}</Badge>}</div>
+   <div className="badge-row"><Badge tone={lesson.kind}>{t(lesson.kind)}</Badge><Badge tone={lesson.status==='cancelled'?'red':lesson.status==='pending'?'amber':'green'}>{t(lesson.status)}</Badge><Badge>{t(lesson.mode)}</Badge>{lesson.is_one_off&&<Badge>{t('oneOff')}</Badge>}{lesson.demo&&<Badge tone="amber">{t('demo')}</Badge>}</div>
    <div className="detail-facts"><span><CalendarDays size={19}/>{format(fromIso(lesson.date),lang,{weekday:'long',day:'numeric',month:'long'})}</span><span><Clock size={19}/>{lesson.start}–{lesson.end}</span><span><MapPin size={19}/>{lesson.room||'—'}</span>{!guest&&<span><UserRound size={19}/>{lesson.teacher||'—'}</span>}<span><Users size={19}/>{lesson.subgroup?t('subgroup')+' '+lesson.subgroup:t('allGroups')}</span></div>
    {!guest&&lesson.note&&<p className="lesson-note">{lesson.note}</p>}{error&&<Notice error>{error}</Notice>}
    {guest?<><Notice>{t('guestHint')}</Notice><a className="button primary" href="#today">{t('login')}</a></>:<div className="button-row">

@@ -65,7 +65,7 @@ def event(db,kind,item,before=None):
         'before':safe_before,'after':safe_lesson(item)}))
 
 def row(item,config,db):
-    d={**lesson_data(item.data),'id':item.id,'rule_id':item.rule_id,'original_date':item.original_date,'date':item.date,'revision':item.revision,'overridden':item.overridden,'subject_key':subject_key(item.data['title'])}
+    d={**lesson_data(item.data),'id':item.id,'rule_id':item.rule_id,'original_date':item.original_date,'date':item.date,'revision':item.revision,'overridden':item.overridden,'is_one_off':item.rule_id=='','subject_key':subject_key(item.data['title'])}
     tz=ZoneInfo(config['timezone'])
     for field,key in [('start','starts_at'),('end','ends_at')]:
         d[key]=datetime.fromisoformat(f'{item.date}T{d[field]}').replace(tzinfo=tz).isoformat()
@@ -114,6 +114,10 @@ class RuleInput(LessonInput):
     parity:Literal['all','odd','even']='all'
     revision:int=Field(default=0,ge=0)
     preview_token:str=Field(default='',max_length=64)
+
+class OneOffInput(LessonInput):
+    date:date
+    status:Literal['confirmed','pending']='confirmed'
 
 class ExceptionInput(LessonInput):
     date:date
@@ -226,6 +230,22 @@ def occurrences(request:Request,start:date,end:date,subgroup:int=Query(default=0
         config=settings(db).data
         items=db.scalars(select(Occurrence).where(Occurrence.date>=start.isoformat(),Occurrence.date<=end.isoformat()).order_by(Occurrence.date)).all()
         return [row(i,config,db) for i in items if not i.data.get('removed_from_template') and not i.data.get('removed_from_schedule') and (not subgroup or i.data['subgroup'] in (0,subgroup))]
+
+@app.post('/api/schedule/occurrences',status_code=201)
+def add_occurrence(data:OneOffInput,request:Request):
+    u=identity(request);manager(u)
+    with DB.begin() as db:
+        config=settings(db,True).data
+        day=data.date.isoformat()
+        if not config['semester_start']<=day<=config['semester_end']:fail('outside_semester',422)
+        content=data.model_dump(mode='json',exclude={'date'})
+        item=Occurrence(id=str(uuid.uuid4()),rule_id='',original_date=day,date=day,data=content,overridden=True)
+        db.add(item);db.flush();conflicts(db)
+        remember_subject(db,item.data)
+        event(db,'occurrence.created',item)
+        result=row(item,config,db)
+        audit(db,u,'occurrence_created',item.id,{'after':result})
+        return result
 
 @app.get('/api/schedule/occurrences/{oid}')
 def get_occurrence(oid:str,request:Request):
@@ -375,7 +395,7 @@ def event_head(request:Request):
 PUBLIC_LESSON_FIELDS = {
     'id', 'title', 'title_en', 'title_en_auto', 'kind', 'room', 'mode',
     'start', 'end', 'subgroup', 'status', 'date', 'starts_at', 'ends_at',
-    'parity', 'demo', 'subject_key',
+    'parity', 'demo', 'subject_key', 'is_one_off',
 }
 PUBLIC_SETTINGS_FIELDS = set(DEFAULT_SETTINGS)
 
