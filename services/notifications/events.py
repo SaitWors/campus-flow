@@ -1,7 +1,7 @@
 """Build concise bilingual updates from safe internal event metadata."""
 from services.notifications.questions import STAFF
 
-LESSON_FIELDS = ('title', 'title_en', 'date', 'start', 'end', 'room', 'status', 'subgroup')
+LESSON_FIELDS = ('title', 'title_en', 'date', 'start', 'end', 'room', 'status', 'subgroup', 'kind')
 
 
 def lesson(value):
@@ -28,6 +28,9 @@ def relevant(subgroup, user):
 
 def lesson_text(value, english=False):
     name = (value.get('title_en') or value.get('title', '')) if english else value.get('title', '')
+    assessment = {'credit': ('Зачёт', 'Pass/fail assessment'), 'exam': ('Экзамен', 'Exam')}.get(value.get('kind'))
+    if assessment:
+        name = assessment[int(english)] + ': ' + name
     when = ' '.join(v for v in (value.get('date'), value.get('start', '') + ('–' + value['end'] if value.get('end') else '')) if v)
     room = (('room ' if english else 'ауд. ') + value['room']) if value.get('room') else ''
     status = {'cancelled': 'cancelled' if english else 'отменено',
@@ -41,7 +44,8 @@ def change_text(change, english=False):
         prefix = 'Cancelled' if english else 'Отменено'
         return prefix + ': ' + lesson_text(after or before or {}, english)
     if not before:
-        return ('New class: ' if english else 'Новая пара: ') + lesson_text(after, english)
+        prefix = ('New event: ' if english else 'Новое событие: ') if after.get('kind') in ('credit', 'exam') else ('New class: ' if english else 'Новая пара: ')
+        return prefix + lesson_text(after, english)
     moved = any(before.get(k) != after.get(k) for k in ('date', 'start', 'end'))
     label = ('Moved' if moved else 'Changed') if english else ('Перенесено' if moved else 'Изменено')
     return label + ': ' + lesson_text(before, english) + ' → ' + lesson_text(after, english)

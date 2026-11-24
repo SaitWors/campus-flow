@@ -32,7 +32,7 @@ export function readStudyFilters(storage:DeviceStorage,user:User|null):StudyFilt
   if(!saved||typeof saved!=='object'||Array.isArray(saved))return defaults;
   return {
    subgroup:[0,1,2].includes(saved.subgroup)?saved.subgroup:defaults.subgroup,
-   kind:['all','lecture','lab','practice'].includes(saved.kind)?saved.kind:defaults.kind,
+   kind:['all','lecture','lab','practice','credit','exam'].includes(saved.kind)?saved.kind:defaults.kind,
    view:['day','week','month'].includes(saved.view)?saved.view:defaults.view,
    compact:typeof saved.compact==='boolean'?saved.compact:defaults.compact,
    collapsePast:typeof saved.collapsePast==='boolean'?saved.collapsePast:defaults.collapsePast,

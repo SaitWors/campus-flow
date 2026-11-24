@@ -1,7 +1,7 @@
 export type Lang = 'ru'|'en';
 export type Theme = 'light'|'dark'|'black'|'ultra-black'|'system';
 export type Role = 'student'|'head'|'deputy'|'admin';
-export type Kind = 'lecture'|'lab'|'practice';
+export type Kind = 'lecture'|'lab'|'practice'|'credit'|'exam';
 export type User = {id:string;email:string;name:string;role:Role;group_role?:'none'|'head'|'deputy';status:'active'|'pending'|'blocked';subgroup:number};
 export type Settings = {group:string;program:string;course:number;semester_start:string;semester_end:string;anchor_monday:string;anchor_parity:'odd'|'even';timezone:string;revision:number;configured:boolean};
 export type Lesson = {id:string;rule_id:string;subject_key?:string;title:string;title_en:string;title_en_auto?:string;translation_pending?:boolean;teacher:string;room:string;kind:Kind;mode:'onsite'|'remote'|'hybrid';meeting_url:string;note:string;start:string;end:string;subgroup:number;status:'confirmed'|'pending'|'cancelled';date:string;original_date:string;revision:number;overridden:boolean;is_one_off?:boolean;starts_at:string;ends_at:string;parity:'odd'|'even';demo?:boolean};

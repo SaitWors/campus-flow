@@ -56,3 +56,30 @@ def test_real_http_workflow(cluster):
 
     from scripts.verify_materials import run as materials
     materials(urls)
+
+
+@pytest.mark.parametrize('kind', ['credit', 'exam'])
+def test_standalone_assessment(cluster,kind):
+    from datetime import date,timedelta
+    from scripts.smoke import Client,PASSWORD
+    urls,setup_key=cluster
+    admin=Client(urls)
+    try:
+        session=admin.request('POST','/api/auth/setup',{'email':'admin@example.test','password':PASSWORD,'name':'Test Administrator','setup_key':setup_key},expected=201)
+        admin.csrf=session['csrf']
+        config=admin.request('GET','/api/schedule/settings')
+        day=date.fromisoformat(config['semester_start'])+timedelta(days=1)
+        end=day+timedelta(days=7)
+        body={'title':'Assessment test','kind':kind,'start':'10:00','end':'11:00','teacher':'Teacher','room':'101','subgroup':0}
+        admin.request('POST','/api/schedule/rules',{**body,'weekday':day.weekday()},expected=422)
+        item=admin.request('POST','/api/schedule/occurrences',{**body,'date':day.isoformat()},expected=201)
+        assert item['kind']==kind and item['is_one_off'] and item['rule_id']==''
+        path=f'/api/schedule/occurrences?start={day}&end={end}'
+        assert [x['id'] for x in admin.request('GET',path)]==[item['id']]
+        updated=admin.request('PATCH','/api/schedule/occurrences/'+item['id'],{**body,'date':end.isoformat(),'status':'confirmed','revision':item['revision']})
+        assert updated['date']==end.isoformat() and updated['kind']==kind
+        assert any(e['data'].get('after',{}).get('kind')==kind for e in admin.request('GET','/api/schedule/events?after=0'))
+        admin.request('DELETE',f"/api/schedule/occurrences/{item['id']}?revision={updated['revision']}")
+        assert not admin.request('GET',path)
+    finally:
+        admin.close()

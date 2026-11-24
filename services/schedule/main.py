@@ -52,7 +52,7 @@ def parity(day,config):
 def audit(db,user,action,target,data=None):
     db.add(Audit(actor=user['name'],action=action,target=target,data=data or {}))
 
-SAFE_EVENT_FIELDS=('title','title_en','date','start','end','room','status','subgroup')
+SAFE_EVENT_FIELDS=('title','title_en','date','start','end','room','status','subgroup','kind')
 
 def safe_lesson(item):
     data={**item.data,'date':item.date}
@@ -94,7 +94,7 @@ class ConfigInput(Input):
 class LessonInput(Input):
     title:str=Field(min_length=2,max_length=120)
     title_en:str=Field(default='',max_length=120)
-    kind:Literal['lecture','lab','practice']
+    kind:Literal['lecture','lab','practice','credit','exam']
     teacher:str=Field(default='',max_length=100)
     room:str=Field(default='',max_length=80)
     mode:Literal['onsite','remote','hybrid']='onsite'
@@ -110,6 +110,7 @@ class LessonInput(Input):
         return self
 
 class RuleInput(LessonInput):
+    kind:Literal['lecture','lab','practice']
     weekday:int=Field(ge=0,le=6)
     parity:Literal['all','odd','even']='all'
     revision:int=Field(default=0,ge=0)
