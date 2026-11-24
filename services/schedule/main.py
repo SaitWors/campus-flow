@@ -23,7 +23,7 @@ from services.schedule.materials import migrate_materials, initialize_materials,
 
 engine, DB=database('schedule')
 translator=TitleTranslator(DB)
-DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester_start':'2026-09-01','semester_end':'2027-01-31','anchor_monday':'2026-08-31','anchor_parity':'odd','timezone':'Europe/Moscow','configured':False}
+DEFAULT_SETTINGS={'group':'БВТ2302','program':'09.03.01','course':4,'semester_start':'2026-09-01','semester_end':'2027-01-31','teaching_end':None,'anchor_monday':'2026-08-31','anchor_parity':'odd','timezone':'Europe/Moscow','configured':False}
 
 @asynccontextmanager
 async def lifespan(app):
@@ -79,6 +79,7 @@ class ConfigInput(Input):
     course:int=Field(ge=1,le=6)
     semester_start:date
     semester_end:date
+    teaching_end:date|None=None
     anchor_monday:date
     anchor_parity:Literal['odd','even']
     timezone:str=Field(default='Europe/Moscow',max_length=60)
@@ -87,6 +88,7 @@ class ConfigInput(Input):
     def valid(self):
         if self.anchor_monday.weekday()!=0:raise ValueError('anchor_must_be_monday')
         if not 0<(self.semester_end-self.semester_start).days<=366:raise ValueError('invalid_semester')
+        if self.teaching_end is not None and not self.semester_start<=self.teaching_end<=self.semester_end:raise ValueError('invalid_teaching_end')
         try:ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError:raise ValueError('invalid_timezone')
         return self
@@ -126,9 +128,14 @@ class ExceptionInput(LessonInput):
     revision:int=Field(ge=1)
 
 
+def teaching_end(config):
+    return config.get('teaching_end') or config['semester_end']
+
+
 def generate_rule(db,rule,config,future_only=False):
     start=date.fromisoformat(config['semester_start']);end=date.fromisoformat(config['semester_end'])
     today=datetime.now(ZoneInfo(config['timezone'])).date()
+    cutoff=teaching_end(config)
     wanted=set();d=start
     while d<=end:
         if not rule.archived and d.weekday()==rule.data['weekday'] and (rule.data['parity']=='all' or parity(d,config)==rule.data['parity']):
@@ -137,10 +144,10 @@ def generate_rule(db,rule,config,future_only=False):
             item=db.get(Occurrence,oid)
             content={k:v for k,v in lesson_data(rule.data).items() if k not in ('weekday','parity')}
             content.update(status='confirmed',demo=bool(rule.data.get('demo',False)))
-            if not item and not (future_only and d<today):
+            if not item and d.isoformat()<=cutoff and not (future_only and d<today):
                 item=Occurrence(id=oid,rule_id=rule.id,original_date=d.isoformat(),date=d.isoformat(),data=content)
                 db.add(item);db.flush();event(db,'occurrence.created',item)
-            elif item and not item.overridden and d>=today and item.data!=content:
+            elif item and not item.overridden and d>=today and d.isoformat()<=cutoff and item.data!=content:
                 before=safe_lesson(item)
                 item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item,before)
         d+=timedelta(days=1)
@@ -151,6 +158,25 @@ def generate_rule(db,rule,config,future_only=False):
                 before=safe_lesson(item)
                 item.data={**item.data,'status':'cancelled','removed_from_template':True}
                 item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item,before)
+            continue
+        # A teaching cutoff is reversible and must not erase manual exceptions.
+        # Use the existing visibility tombstone so guest views, conflicts and
+        # calendar subscriptions all agree. Preserve historical occurrences.
+        if item.date<today.isoformat() or item.data.get('removed_from_schedule'):
+            continue
+        if item.data.get('kind') in ('credit','exam'):
+            continue
+        if item.date>cutoff:
+            if not item.data.get('removed_from_template'):
+                before=safe_lesson(item)
+                item.data={**item.data,'teaching_end_status':item.data['status'],
+                           'status':'cancelled','removed_from_template':True}
+                item.revision+=1;item.updated_at=now();event(db,'occurrence.cancelled',item,before)
+        elif 'teaching_end_status' in item.data and not rule.archived:
+            before=safe_lesson(item);content=dict(item.data)
+            content['status']=content.pop('teaching_end_status')
+            content.pop('removed_from_template',None)
+            item.data=content;item.revision+=1;item.updated_at=now();event(db,'occurrence.updated',item,before)
     db.flush()
 
 
@@ -272,6 +298,8 @@ def exception(oid:str,data:ExceptionInput,request:Request):
         if not item:fail('not_found',404)
         if item.revision!=data.revision:fail('revision_conflict',409)
         if not config['semester_start']<=data.date.isoformat()<=config['semester_end']:fail('outside_semester',422)
+        if 'teaching_end_status' in item.data:fail('not_found',404)
+        if item.rule_id and data.kind not in ('credit','exam') and data.date.isoformat()>teaching_end(config):fail('outside_teaching_period',422)
         before=row(item,config,db)
         item.data={**data.model_dump(mode='json',exclude={'revision','date'}),'demo':item.data.get('demo',False)}
         item.date=data.date.isoformat();item.overridden=True;item.revision+=1;item.updated_at=now()
